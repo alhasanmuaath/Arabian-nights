@@ -1,0 +1,7 @@
+<h2>Shoot Scheduler</h2>
+<p>Your login code is:</p>
+<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+<p>Type it on the login page, or tap this link on the phone or computer you are logging in from:<br>
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Log in to Shoot Scheduler</a></p>
+<p>New here? The manager has added you to the team. Next time, go to {{ .SiteURL }}/login and enter this email address to get a fresh code.</p>
+<p>If you did not expect this email, you can ignore it.</p>

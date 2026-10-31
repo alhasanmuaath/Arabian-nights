@@ -6,12 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:db": "bash tests/reset-local.sh && psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql",
+    "test:e2e": "bash tests/reset-local.sh && node tests/e2e.cjs",
+    "seed": "node --env-file=.env.local scripts/seed.mjs",
+    "add-manager": "node --env-file=.env.local scripts/add-manager.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
     "next": "16.4.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
@@ -20,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "supabase": "^2.122.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
