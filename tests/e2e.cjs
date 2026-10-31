@@ -52,6 +52,16 @@ const body = async (page) => (await page.locator('main').innerText()).replace(/\
     await shot(page, '01-login'); await ctx.close()
   }
 
+  // ---------- app owner: on the team list (by SQL) but no login account yet ----------
+  {
+    const { ctx, page } = await login(browser, 'alhasanmuaath@gmail.com')
+    check('owner email logs in on first try and lands on the dashboard', page.url().endsWith('/dashboard'))
+    check('owner is shown as manager', /Muaath · manager/.test(await page.locator('header').innerText()))
+    await page.goto(BASE + '/people')
+    check('owner can open People', page.url().endsWith('/people') && /Invite someone/.test(await body(page)))
+    await ctx.close()
+  }
+
   // ---------- Sara (model) ----------
   {
     const { ctx, page } = await login(browser, 'sara@example.com')

@@ -77,7 +77,7 @@ reset role;
 
 -- ---------- as manager ----------
 select pg_temp.login_as('manager@example.com');
-select pg_temp.check('manager sees all people', (select count(*) = 3 from people));
+select pg_temp.check('manager sees all people (2 managers + 2 models)', (select count(*) = 4 from people));
 select pg_temp.check('manager sees everyone''s availability', (select count(distinct person_id) = 2 from availability));
 select pg_temp.check('manager sees free days too', (select count(*) = 5 from shoot_days));
 select pg_temp.check('manager can invite a view-only member (runs)', pg_temp.raises($q$insert into people (name, email, role, access) values ('Viewer', 'viewer@example.com', 'member', 'view'),
@@ -95,7 +95,7 @@ select pg_temp.check('assigning a person auto-sets status offered',
   pg_temp.raises($q$update shoot_days set person_id = (select id from people where email='sara@example.com') where date = '2026-11-22'$q$) is null);
 select pg_temp.check('cannot un-complete a paid day (result)', (select status = 'offered' from shoot_days where date = '2026-11-22'));
 select pg_temp.check('cannot remove the last manager',
-  pg_temp.raises($q$set constraints all immediate; update people set role = 'model' where email = 'manager@example.com'$q$) like '%at least one manager%');
+  pg_temp.raises($q$set constraints all immediate; update people set role = 'model' where role = 'manager'$q$) like '%at least one manager%');
 reset role;
 
 -- give the two members logins so we can test them
