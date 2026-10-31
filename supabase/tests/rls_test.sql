@@ -32,7 +32,7 @@ select pg_temp.check('model sees only own shoot days (no free/other days)', (sel
 select pg_temp.check('model sees only own pay', (select count(*) > 0 and bool_and(person_id = my_person_id()) from pay));
 select pg_temp.check('model can read targets', (select count(*) = 1 from targets));
 
-select pg_temp.check('model cannot add availability for Mona (runs)', pg_temp.raises($q$insert into availability (person_id, date, start_time, end_time)
+select pg_temp.check('model cannot add availability for Mona', pg_temp.raises($q$insert into availability (person_id, date, start_time, end_time)
      values ((select id from public.people where email='mona@example.com'), '2026-11-30', '10:00', '12:00')$q$) like '%row-level security%');
 -- (she can't even look up Mona's id: subquery returns null -> not-null violation; both are refusals)
 
@@ -70,9 +70,9 @@ select pg_temp.check('Mona cannot see any of Sara''s rows',
   and (select count(*) = 0 from pay p where p.person_id <> my_person_id()));
 with d as (delete from availability where person_id <> my_person_id() returning 1)
   select pg_temp.check('Mona cannot delete Sara''s availability', (select count(*) = 0 from d));
-select pg_temp.check('Mona can accept her offered day',
+select pg_temp.check('Mona can accept her offered day (runs)',
   pg_temp.raises($q$select respond_to_shoot_day((select id from shoot_days where status='offered'), true)$q$) is null);
-select pg_temp.check('model cannot add availability for Mona (result)', (select status = 'confirmed' from shoot_days where date = '2026-11-18'));
+select pg_temp.check('Mona can accept her offered day (result)', (select status = 'confirmed' from shoot_days where date = '2026-11-18'));
 reset role;
 
 -- ---------- as manager ----------
@@ -80,20 +80,20 @@ select pg_temp.login_as('manager@example.com');
 select pg_temp.check('manager sees all people (2 managers + 2 models)', (select count(*) = 4 from people));
 select pg_temp.check('manager sees everyone''s availability', (select count(distinct person_id) = 2 from availability));
 select pg_temp.check('manager sees free days too', (select count(*) = 5 from shoot_days));
-select pg_temp.check('manager can invite a view-only member (runs)', pg_temp.raises($q$insert into people (name, email, role, access) values ('Viewer', 'viewer@example.com', 'member', 'view'),
+select pg_temp.check('manager can invite a view-only member', pg_temp.raises($q$insert into people (name, email, role, access) values ('Viewer', 'viewer@example.com', 'member', 'view'),
                                                                         ('Editor', 'editor@example.com', 'member', 'edit')$q$) is null);
 select pg_temp.check('manager can set day rate', pg_temp.raises($q$update targets set day_rate = 3500$q$) is null);
-select pg_temp.check('completing a day creates a pay row',
+select pg_temp.check('completing a day creates a pay row (runs)',
   pg_temp.raises($q$update shoot_days set status = 'completed' where date = '2026-11-15'$q$) is null);
-select pg_temp.check('manager can invite a view-only member (result)', (select p.amount = 3500 and p.status = 'not_paid' from pay p join shoot_days s on s.id = p.shoot_day_id where s.date = '2026-11-15'));
+select pg_temp.check('completing a day creates a pay row (result)', (select p.amount = 3500 and p.status = 'not_paid' from pay p join shoot_days s on s.id = p.shoot_day_id where s.date = '2026-11-15'));
 select pg_temp.check('manager can mark paid (runs)', pg_temp.raises($q$update pay set status = 'paid' where shoot_day_id = (select id from shoot_days where date='2026-11-15')$q$) is null);
 select pg_temp.check('manager can mark paid (result)', (select paid_at is not null from pay where shoot_day_id = (select id from shoot_days where date='2026-11-15')));
-select pg_temp.check('cannot un-complete a paid day (runs)', pg_temp.raises($q$update shoot_days set status = 'confirmed' where date = '2026-11-15'$q$) like '%already paid%');
+select pg_temp.check('cannot un-complete a paid day', pg_temp.raises($q$update shoot_days set status = 'confirmed' where date = '2026-11-15'$q$) like '%already paid%');
 select pg_temp.check('shoot day over 6 hours rejected',
   pg_temp.raises($q$insert into shoot_days (date, hours) values ('2026-11-26', 7)$q$) like '%check constraint%');
-select pg_temp.check('assigning a person auto-sets status offered',
+select pg_temp.check('assigning a person auto-sets status offered (runs)',
   pg_temp.raises($q$update shoot_days set person_id = (select id from people where email='sara@example.com') where date = '2026-11-22'$q$) is null);
-select pg_temp.check('cannot un-complete a paid day (result)', (select status = 'offered' from shoot_days where date = '2026-11-22'));
+select pg_temp.check('assigning a person auto-sets status offered (result)', (select status = 'offered' from shoot_days where date = '2026-11-22'));
 select pg_temp.check('cannot remove the last manager',
   pg_temp.raises($q$set constraints all immediate; update people set role = 'model' where role = 'manager'$q$) like '%at least one manager%');
 reset role;

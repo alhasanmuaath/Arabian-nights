@@ -42,9 +42,14 @@ screens. A model's queries can only ever return her own rows.
 3. Copy `.env.example` to `.env.local` and paste them in. **Never share the secret key.**
 
 ### 2. Create the tables and security rules
-Open **SQL Editor → New query** and run these two files, in this order (paste each one, click **Run**):
+Open **SQL Editor → New query** and run these files, in this order (paste each one, click **Run**):
 1. `supabase/migrations/20261101000000_schema.sql`: tables, rules and security
 2. `supabase/migrations/20261101000100_initial_manager.sql`: makes **alhasanmuaath@gmail.com** the manager
+3. `supabase/migrations/20261101000200_harden_function_grants.sql`: least-privilege function access
+
+> **Already done** for the live project `shoot-scheduler` (`gkwksqpzswythtnzcxrw`, Frankfurt):
+> all three files applied, and the 50 privacy checks passed on the live database (then rolled back,
+> so no test data was left behind). Its URL and publishable key are in `.env.example`.
 
 ### 3. Auth settings (in the Supabase dashboard)
 1. **Authentication → Sign In / Providers**: turn **off** "Allow new users to sign up". Keep **Email** enabled.
