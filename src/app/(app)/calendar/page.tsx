@@ -24,10 +24,14 @@ export default async function MyCalendar({ searchParams }: { searchParams: Promi
   const windows = (avail ?? []) as Availability[]
   const myShoots = (shoots ?? []) as ShootDay[]
 
-  const hoursByDate = new Map<string, number>()
-  for (const w of windows) hoursByDate.set(w.date, (hoursByDate.get(w.date) ?? 0) + Number(w.hours))
+  const approvedWindows = windows.filter((w) => w.status === 'approved')
+
+const hoursByDate = new Map<string, number>()
+for (const w of approvedWindows) {
+  hoursByDate.set(w.date, (hoursByDate.get(w.date) ?? 0) + Number(w.hours))
+}
   const shootByDate = new Map(myShoots.map((s) => [s.date, s]))
-  const totalHours = windows.reduce((a, w) => a + Number(w.hours), 0)
+  const totalHours = approvedWindows.reduce((a, w) => a + Number(w.hours), 0)
   const offers = myShoots.filter((s) => s.status === 'offered')
   const upcoming = myShoots.filter((s) => s.status === 'confirmed' && s.date >= today)
 
@@ -45,7 +49,7 @@ export default async function MyCalendar({ searchParams }: { searchParams: Promi
           {fmtDate(targets.season_start)} – {fmtDate(targets.season_end)} · Cairo time · max 6 h per day
         </p>
         <p className="mt-1 text-sm">
-          You&apos;ve offered <strong>{fmtHours(totalHours)}</strong> across <strong>{hoursByDate.size}</strong> days.
+          You have <strong>{fmtHours(totalHours)}</strong> of approved free time across <strong>{hoursByDate.size}</strong> days.
         </p>
       </div>
 
@@ -132,12 +136,16 @@ export default async function MyCalendar({ searchParams }: { searchParams: Promi
         ) : (
           <ul className="divide-y divide-gray-100">
             {dayWindows.map((w) => (
-              <li key={w.id} className="flex items-center justify-between py-2 text-sm">
-                <span>
-                  {fmtTime(w.start_time)} – {fmtTime(w.end_time)} <span className="text-gray-600">({fmtHours(w.hours)})</span>
-                </span>
-                <SmallAction action={deleteAvailability} fields={{ id: w.id }} label="Remove" variant="danger" />
-              </li>
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+  <span>
+    {fmtTime(w.start_time)} – {fmtTime(w.end_time)}{' '}
+    <span className="text-gray-600">({fmtHours(w.hours)})</span>
+  </span>
+  <div className="flex items-center gap-2">
+    <StatusBadge status={w.status} />
+    <SmallAction action={deleteAvailability} fields={{ id: w.id }} label="Remove" variant="danger" />
+  </div>
+</li>
             ))}
           </ul>
         )}
@@ -163,22 +171,26 @@ export default async function MyCalendar({ searchParams }: { searchParams: Promi
                 <th>Start</th>
                 <th>End</th>
                 <th>Hours</th>
+                <th>Status</th>
               </tr>
             </thead>
-            <tbody>
-              {windows.map((w) => (
-                <tr key={w.id}>
-                  <td>
-                    <Link className="underline" href={`/calendar?date=${w.date}`}>
-                      {fmtDate(w.date)}
-                    </Link>
-                  </td>
-                  <td>{fmtTime(w.start_time)}</td>
-                  <td>{fmtTime(w.end_time)}</td>
-                  <td>{fmtHours(w.hours)}</td>
-                </tr>
-              ))}
-            </tbody>
+            
+<tbody>
+  {windows.map((w) => (
+    <tr key={w.id}>
+      <td>
+        <Link className="underline" href={`/calendar?date=${w.date}`}>
+          {fmtDate(w.date)}
+        </Link>
+      </td>
+      <td>{fmtTime(w.start_time)}</td>
+      <td>{fmtTime(w.end_time)}</td>
+      <td>{fmtHours(w.hours)}</td>
+      <td><StatusBadge status={w.status} /></td>
+    </tr>
+  ))}
+</tbody>
+
           </table>
         )}
       </section>

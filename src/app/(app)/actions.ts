@@ -54,12 +54,41 @@ export async function addAvailability(_p: ActionState, fd: FormData): Promise<Ac
   return { ok: `Added ${start_time}–${end_time} on ${added} date${added === 1 ? '' : 's'}.` }
 }
 
+
+
 export async function deleteAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
-  const { data, error } = await supabase.from('availability').delete().eq('id', str(fd, 'id')).select('id')
+  const { data, error } = await supabase
+    .from('availability')
+    .delete()
+    .eq('id', str(fd, 'id'))
+    .select('id')
+
   if (error) return { error: friendly(error.message) }
   if (!data?.length) return { error: "You don't have permission to do that." }
+
   return done('Removed.')
+}
+
+export async function reviewAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+
+  const id = str(fd, 'id')
+  const status = str(fd, 'status')
+
+  if (!id) return { error: 'Missing availability request.' }
+  if (status !== 'approved' && status !== 'rejected') {
+    return { error: 'Invalid review status.' }
+  }
+
+  const { error } = await supabase.rpc('set_availability_status', {
+    request_id: id,
+    requested_status: status,
+  })
+
+  if (error) return { error: friendly(error.message) }
+
+  return done(status === 'approved' ? 'Availability approved.' : 'Availability rejected.')
 }
 
 // ---------- model answers an offered day ----------

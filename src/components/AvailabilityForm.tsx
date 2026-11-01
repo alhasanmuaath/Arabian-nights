@@ -67,7 +67,16 @@ export function AvailabilityForm({
           ))}
         </div>
       </fieldset>
-      <SubmitButton>Add window</SubmitButton>
+      {people ? (
+  <p className="text-xs text-gray-600">
+    Availability added by a manager or authorized editor is approved immediately.
+  </p>
+) : (
+  <p className="text-xs text-gray-600">
+    Your availability request will remain pending until a manager approves it.
+  </p>
+)}
+<SubmitButton>Add window</SubmitButton>
     </ActionForm>
   )
 }

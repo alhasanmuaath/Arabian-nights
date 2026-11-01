@@ -9,7 +9,7 @@ import { respondToShootDay } from '../actions'
 export default async function MyProgress() {
   const { supabase, me } = await requireRole('model')
   const [{ data: a }, { data: s }] = await Promise.all([
-    supabase.from('availability').select('hours').eq('person_id', me.id),
+    supabase.from('availability').select('hours').eq('person_id', me.id).eq('status', 'approved'),
     supabase.from('shoot_days').select('*').eq('person_id', me.id).order('date'),
   ])
   const avail = (a ?? []) as Pick<Availability, 'hours'>[]
@@ -28,7 +28,7 @@ export default async function MyProgress() {
       <h1>My progress</h1>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Free time offered" value={fmtHours(offeredHours)} />
+        <Stat label="Approved free time" value={fmtHours(offeredHours)} />
         <Stat label="Hours booked" value={fmtHours(bookedHours)} />
         <Stat label="Videos assigned" value={String(videosAssigned)} />
         <Stat label="Days completed" value={String(completed.length)} />

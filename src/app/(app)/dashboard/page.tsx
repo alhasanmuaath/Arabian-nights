@@ -7,7 +7,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate, fmtHours, fmtTime, seasonDates } from '@/lib/dates'
 import { canEditAll, getTargets, requireRole } from '@/lib/session'
 import type { Availability, Person, ShootDay, Targets } from '@/lib/types'
-import { createShootDay, deleteAvailability, deleteShootDay, updateShootDay, updateTargets } from '../actions'
+import { createShootDay, deleteAvailability, deleteShootDay, reviewAvailability, updateShootDay, updateTargets } from '../actions'
 
 const STATUSES = ['free', 'offered', 'confirmed', 'completed'] as const
 
@@ -125,7 +125,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                       {m.name}
                     </Link>
                   </td>
-                  <td>{fmtHours(avail.filter((w) => w.person_id === m.id).reduce((t, w) => t + Number(w.hours), 0))}</td>
+                  <td>{fmtHours(avail.filter((w) => w.person_id === m.id && w.status === 'approved').reduce((t, w) => t + Number(w.hours), 0))}</td>
                   <td>{mine.filter((d) => d.status === 'confirmed' || d.status === 'completed').length} days</td>
                   <td>{mine.reduce((t, d) => t + d.videos_planned, 0)}</td>
                   <td>{mine.filter((d) => d.status === 'completed').length}</td>
@@ -166,13 +166,45 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 </p>
                 <ul>
                   {ws.map((w) => (
-                    <li key={w.id} className="flex items-center justify-between gap-2 py-1 text-sm">
-                      <span>
-                        {nameOf.get(w.person_id)} · {fmtTime(w.start_time)}–{fmtTime(w.end_time)}{' '}
-                        <span className="text-gray-600">({fmtHours(w.hours)})</span>
-                      </span>
-                      {canEdit && <SmallAction action={deleteAvailability} fields={{ id: w.id }} label="Remove" variant="danger" />}
-                    </li>
+                    
+<li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+  <div className="flex flex-wrap items-center gap-2">
+    <span>
+      <strong>{nameOf.get(w.person_id) ?? 'Unknown model'}</strong>
+      {' · '}{fmtTime(w.start_time)}–{fmtTime(w.end_time)}{' '}
+      <span className="text-gray-600">({fmtHours(w.hours)})</span>
+    </span>
+    <StatusBadge status={w.status} />
+  </div>
+
+  <div className="flex flex-wrap items-center gap-2">
+    {canEdit && w.status === 'pending' && (
+      <>
+        <SmallAction
+          action={reviewAvailability}
+          fields={{ id: w.id, status: 'approved' }}
+          label="Approve"
+          variant="primary"
+        />
+        <SmallAction
+          action={reviewAvailability}
+          fields={{ id: w.id, status: 'rejected' }}
+          label="Reject"
+          variant="danger"
+        />
+      </>
+    )}
+    {canEdit && (
+      <SmallAction
+        action={deleteAvailability}
+        fields={{ id: w.id }}
+        label="Remove"
+        variant="danger"
+      />
+    )}
+  </div>
+</li>
+
                   ))}
                 </ul>
               </div>

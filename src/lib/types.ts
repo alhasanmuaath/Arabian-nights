@@ -25,6 +25,9 @@ export type Targets = {
   currency: string
 }
 
+
+export type AvailabilityStatus = 'pending' | 'approved' | 'rejected'
+
 export type Availability = {
   id: string
   person_id: string
@@ -32,6 +35,7 @@ export type Availability = {
   start_time: string
   end_time: string
   hours: number
+  status: AvailabilityStatus
 }
 
 export type ShootDay = {
