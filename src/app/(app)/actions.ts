@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { getMe } from '@/lib/session'
+import { getMe, canEditAll } from '@/lib/session'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from '@/lib/supabase/env'
@@ -33,31 +33,106 @@ function done(ok: string): ActionState {
 }
 
 // ---------- availability ----------
+
 export async function addAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
+
   const person_id = str(fd, 'person_id') || me.id
+  const dates = fd.getAll('dates').map(String).filter(Boolean)
+
   const start_time = str(fd, 'start_time')
   const end_time = str(fd, 'end_time')
-  const dates = fd.getAll('dates').map(String).filter(Boolean)
+  const second_start = str(fd, 'second_start')
+  const second_end = str(fd, 'second_end')
+
   if (!dates.length) return { error: 'Pick at least one date.' }
-  if (!start_time || !end_time) return { error: 'Enter a start and end time.' }
-  if (end_time <= start_time) return { error: 'End time must be after start time.' }
+
+  if (!start_time || !end_time || end_time <= start_time) {
+    return { error: 'Enter a valid first time window.' }
+  }
+
+  if (Boolean(second_start) !== Boolean(second_end)) {
+    return { error: 'Complete both times for the second window.' }
+  }
+
+  if (second_start && second_end && second_end <= second_start) {
+    return { error: 'End time must be after the second start time.' }
+  }
+
+  if (second_start && second_start < end_time) {
+    return { error: 'The second window must start after the first window ends.' }
+  }
+
+  const windows = [
+    { start_time, end_time },
+    ...(second_start && second_end
+      ? [{ start_time: second_start, end_time: second_end }]
+      : []),
+  ]
 
   const failed: string[] = []
+
   for (const date of dates) {
-    const { error } = await supabase.from('availability').insert({ person_id, date, start_time, end_time })
-    if (error) failed.push(`${date}: ${friendly(error.message)}`)
+    for (const window of windows) {
+      const { error } = await supabase
+        .from('availability')
+        .insert({ person_id, date, ...window })
+
+      if (error) {
+        failed.push(`${date} (${window.start_time}–${window.end_time}): ${friendly(error.message)}`)
+        break
+      }
+    }
   }
+
   revalidatePath('/', 'layout')
-  const added = dates.length - failed.length
-  if (failed.length) return { error: `Added ${added} of ${dates.length}. ${failed.join(' · ')}` }
-  return { ok: `Added ${start_time}–${end_time} on ${added} date${added === 1 ? '' : 's'}.` }
+
+  const added = dates.length - new Set(failed.map((f) => f.split(' ')[0])).size
+
+  if (failed.length) {
+    return { error: `Added windows for ${added} of ${dates.length} dates. ${failed.join(' · ')}` }
+  }
+
+  return {
+    ok: `Added ${windows.length} window${windows.length === 1 ? '' : 's'} on ${dates.length} date${dates.length === 1 ? '' : 's'}.`,
+  }
 }
 
 
 
+
+export async function updateAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+
+  const id = str(fd, 'id')
+  const date = str(fd, 'date')
+  const start_time = str(fd, 'start_time')
+  const end_time = str(fd, 'end_time')
+
+  if (!id || !date || !start_time || !end_time) {
+    return { error: 'Complete all availability fields.' }
+  }
+
+  if (end_time <= start_time) {
+    return { error: 'End time must be after start time.' }
+  }
+
+  const { data, error } = await supabase
+    .from('availability')
+    .update({ date, start_time, end_time })
+    .eq('id', id)
+    .select('id')
+
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: "You don't have permission to do that." }
+
+  revalidatePath('/', 'layout')
+  return done('Availability updated. It may require approval again.')
+}
+
 export async function deleteAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
+
   const { data, error } = await supabase
     .from('availability')
     .delete()
@@ -67,6 +142,7 @@ export async function deleteAvailability(_p: ActionState, fd: FormData): Promise
   if (error) return { error: friendly(error.message) }
   if (!data?.length) return { error: "You don't have permission to do that." }
 
+  revalidatePath('/', 'layout')
   return done('Removed.')
 }
 
@@ -259,4 +335,282 @@ export async function removePerson(_p: ActionState, fd: FormData): Promise<Actio
   const admin = createAdminClient()
   if (userId && admin) await admin.auth.admin.deleteUser(userId)
   return done('Removed from the team.')
+}
+export async function markNotificationRead(id: string) {
+  const { supabase } = await session()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('id', id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/', 'layout')
+}
+
+// ---------- announcements (manager / edit members) ----------
+export async function createAnnouncement(
+  _p: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  const canManage =
+    me.role === 'manager' || (me.role === 'member' && me.access === 'edit')
+
+  if (!canManage) return { error: "You don't have permission to publish announcements." }
+
+  const title = str(fd, 'title')
+  const body = str(fd, 'body')
+  const allModels = str(fd, 'all_models') === 'yes'
+  const selectedIds = [...new Set(fd.getAll('person_ids').map(String).filter(Boolean))]
+
+  if (!title || !body) return { error: 'Enter an announcement title and message.' }
+
+  let recipientIds = selectedIds
+
+  if (allModels) {
+    const { data, error } = await supabase
+      .from('people')
+      .select('id')
+      .eq('role', 'model')
+
+    if (error) return { error: friendly(error.message) }
+    recipientIds = (data ?? []).map((person) => person.id)
+  } else if (recipientIds.length) {
+    const { data, error } = await supabase
+      .from('people')
+      .select('id')
+      .eq('role', 'model')
+      .in('id', recipientIds)
+
+    if (error) return { error: friendly(error.message) }
+
+    if ((data ?? []).length !== recipientIds.length) {
+      return { error: 'One or more selected recipients are invalid.' }
+    }
+  }
+
+  if (!recipientIds.length) {
+    return { error: 'Select at least one model or choose all models.' }
+  }
+
+  const { data: announcement, error } = await supabase
+    .from('announcements')
+    .insert({ title, body, created_by: me.id })
+    .select('id')
+    .single()
+
+  if (error) return { error: friendly(error.message) }
+
+  const { error: recipientError } = await supabase
+    .from('announcement_recipients')
+    .insert(recipientIds.map((person_id) => ({
+      announcement_id: announcement.id,
+      person_id,
+    })))
+
+  if (recipientError) {
+    await supabase.from('announcements').delete().eq('id', announcement.id)
+    return { error: friendly(recipientError.message) }
+  }
+
+  revalidatePath('/', 'layout')
+  return { ok: `Announcement published to ${recipientIds.length} model${recipientIds.length === 1 ? '' : 's'}.` }
+}
+
+export async function deleteAnnouncement(
+  _p: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  const canManage =
+    me.role === 'manager' || (me.role === 'member' && me.access === 'edit')
+
+  if (!canManage) return { error: "You don't have permission to delete announcements." }
+
+  const id = str(fd, 'id')
+  if (!id) return { error: 'Missing announcement.' }
+
+  const { data, error } = await supabase
+    .from('announcements')
+    .delete()
+    .eq('id', id)
+    .select('id')
+
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: 'Announcement not found or permission denied.' }
+
+  return done('Announcement deleted.')
+}
+
+// ---------- shared files (manager / edit members) ----------
+
+export async function uploadSharedFile(
+  _p: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  if (!canEditAll(me)) {
+    return { error: "You don't have permission to upload files." }
+  }
+
+  const file = fd.get('file')
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: 'Choose a file to upload.' }
+  }
+
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ]
+
+  if (!allowedTypes.includes(file.type)) {
+    return { error: 'Only PDF, Word, Excel, and PowerPoint documents are allowed.' }
+  }
+
+  if (file.size > 15 * 1024 * 1024) {
+    return { error: 'The maximum file size is 15 MB.' }
+  }
+
+  const allModels = str(fd, 'all_models') === 'yes'
+  const selectedIds = [...new Set(fd.getAll('person_ids').map(String).filter(Boolean))]
+
+  let recipientIds = selectedIds
+
+  if (allModels) {
+    const { data, error } = await supabase
+      .from('people')
+      .select('id')
+      .eq('role', 'model')
+
+    if (error) return { error: friendly(error.message) }
+    recipientIds = (data ?? []).map((person) => person.id)
+  } else if (recipientIds.length) {
+    const { data, error } = await supabase
+      .from('people')
+      .select('id')
+      .eq('role', 'model')
+      .in('id', recipientIds)
+
+    if (error) return { error: friendly(error.message) }
+
+    if ((data ?? []).length !== recipientIds.length) {
+      return { error: 'One or more selected recipients are invalid.' }
+    }
+  }
+
+  if (!recipientIds.length) {
+    return { error: 'Select at least one model or choose all models.' }
+  }
+
+  const safeName = file.name
+    .replace(/[\\/]/g, '_')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(-120) || 'document'
+
+  const { data: record, error: recordError } = await supabase
+    .from('shared_files')
+    .insert({
+      name: file.name,
+      description: str(fd, 'description') || null,
+      storage_path: '',
+      mime_type: file.type,
+      size_bytes: file.size,
+      uploaded_by: me.id,
+    })
+    .select('id')
+    .single()
+
+  if (recordError) return { error: friendly(recordError.message) }
+
+  const storagePath = `${record.id}/${safeName}`
+
+  const { error: updateError } = await supabase
+    .from('shared_files')
+    .update({ storage_path: storagePath })
+    .eq('id', record.id)
+
+  if (updateError) {
+    await supabase.from('shared_files').delete().eq('id', record.id)
+    return { error: friendly(updateError.message) }
+  }
+
+  const { error: uploadError } = await supabase.storage
+    .from('shared-files')
+    .upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    })
+
+  if (uploadError) {
+    await supabase.from('shared_files').delete().eq('id', record.id)
+    return { error: friendly(uploadError.message) }
+  }
+
+  const { error: recipientError } = await supabase
+    .from('shared_file_recipients')
+    .insert(
+      recipientIds.map((person_id) => ({
+        file_id: record.id,
+        person_id,
+      })),
+    )
+
+  if (recipientError) {
+    await supabase.storage.from('shared-files').remove([storagePath])
+    await supabase.from('shared_files').delete().eq('id', record.id)
+    return { error: friendly(recipientError.message) }
+  }
+
+  revalidatePath('/', 'layout')
+  return {
+    ok: `File shared with ${recipientIds.length} model${recipientIds.length === 1 ? '' : 's'}.`,
+  }
+}
+
+export async function deleteSharedFile(
+  _p: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  if (!canEditAll(me)) {
+    return { error: "You don't have permission to delete files." }
+  }
+
+  const id = str(fd, 'id')
+  if (!id) return { error: 'Missing file.' }
+
+  const { data: file, error: findError } = await supabase
+    .from('shared_files')
+    .select('id, storage_path')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (findError) return { error: friendly(findError.message) }
+  if (!file) return { error: 'File not found or permission denied.' }
+
+  const { error: storageError } = await supabase.storage
+    .from('shared-files')
+    .remove([file.storage_path])
+
+  if (storageError) return { error: friendly(storageError.message) }
+
+  const { data, error } = await supabase
+    .from('shared_files')
+    .delete()
+    .eq('id', id)
+    .select('id')
+
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: 'Could not delete the file record.' }
+
+  return done('File deleted.')
 }

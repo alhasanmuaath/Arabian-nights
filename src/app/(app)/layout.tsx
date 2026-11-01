@@ -1,26 +1,43 @@
+
 import { redirect } from 'next/navigation'
 import { Nav } from '@/components/Nav'
 import { getMe } from '@/lib/session'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, me } = await getMe()
+  const { supabase, user, me } = await getMe()
   if (!user) redirect('/login')
   if (!me) redirect('/no-access')
 
-  const links =
-    me.role === 'model'
+  const { count } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('person_id', me.id)
+    .eq('is_read', false)
+
+  
+const links =
+  me.role === 'model'
+    ? [
+        { href: '/calendar', label: 'My calendar' },
+        { href: '/progress', label: 'My progress' },
+        { href: '/pay', label: 'My pay' },
+        { href: '/announcements', label: 'Announcements' },
+{ href: '/files', label: 'Shared Files' },
+      ]
+    : me.role === 'manager'
       ? [
-          { href: '/calendar', label: 'My calendar' },
-          { href: '/progress', label: 'My progress' },
-          { href: '/pay', label: 'My pay' },
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/pay-manager', label: 'Pay manager' },
+          { href: '/people', label: 'People' },
+          { href: '/announcements', label: 'Announcements' },
+{ href: '/files', label: 'Shared Files' },
         ]
-      : me.role === 'manager'
-        ? [
-            { href: '/dashboard', label: 'Dashboard' },
-            { href: '/pay-manager', label: 'Pay manager' },
-            { href: '/people', label: 'People' },
-          ]
-        : [{ href: '/dashboard', label: 'Dashboard' }]
+      : [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/announcements', label: 'Announcements' },
+{ href: '/files', label: 'Shared Files' },
+        ]
+
 
   const roleLabel =
     me.role === 'member' ? `member · ${me.access === 'edit' ? 'can edit' : 'view only'}` : me.role
@@ -40,7 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </form>
         </div>
         <div className="mx-auto max-w-3xl">
-          <Nav links={links} />
+          <Nav links={links} unreadCount={count ?? 0} />
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-4 pb-16">{children}</main>

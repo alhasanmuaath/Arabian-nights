@@ -43,12 +43,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <div>
+           <div>
         <h1>Manager dashboard</h1>
         <p className="muted">
           {fmtDate(targets.season_start)} – {fmtDate(targets.season_end)} · all times Cairo
           {!canEdit && ' · view only'}
         </p>
+
+        <Link
+          href="/team-calendar"
+          className="mt-3 inline-block rounded border px-3 py-2 text-sm underline"
+        >
+          Open Team Calendar →
+        </Link>
       </div>
 
       <section className="card space-y-4">
