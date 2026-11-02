@@ -277,7 +277,7 @@ async function sendInvite(email: string): Promise<string> {
   // 2. Email them a login code + link. A separate, cookie-less client is used so
   //    the manager's own session is not touched.
   const h = await headers()
-  const origin = h.get('origin') || `https://${h.get('host')}`
+  const origin = 'https://www.arabiannights.space'
   const mailer = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, flowType: 'implicit' },
   })
