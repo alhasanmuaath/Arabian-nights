@@ -264,30 +264,25 @@ export async function updatePay(_p: ActionState, fd: FormData): Promise<ActionSt
 }
 
 // ---------- people (manager) ----------
+
 async function sendInvite(email: string): Promise<string> {
   const admin = createAdminClient()
-  if (!admin) return ' (No secret key set, so no email was sent. They can log in with their email at /login.)'
 
-  // 1. Create their login, already confirmed (the manager typed this address).
-  const { error: createErr } = await admin.auth.admin.createUser({ email, email_confirm: true })
-  if (createErr && !/already|registered|exists/i.test(createErr.message)) {
-    return ` But creating their login failed: ${createErr.message}`
+  if (!admin) {
+    return ' (No secret key set, so no invitation email was sent.)'
   }
 
-  // 2. Email them a login code + link. A separate, cookie-less client is used so
-  //    the manager's own session is not touched.
-  const h = await headers()
-  const origin = 'https://www.arabiannights.space'
-  const mailer = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, flowType: 'implicit' },
+  const { error } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: 'https://www.arabiannights.space/auth/confirm',
   })
-  const { error } = await mailer.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false, emailRedirectTo: `${origin}/auth/confirm` },
-  })
-  if (error) return ` Their login is ready, but the email failed (${error.message}). They can log in at /login.`
-  return ' Invite email sent.'
+
+  if (error) {
+    return ` Invitation failed: ${error.message}`
+  }
+
+  return ' Invitation email sent.'
 }
+
 
 export async function invitePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
