@@ -17,7 +17,7 @@ function friendly(message: string): string {
   if (/people_email_key|duplicate key.*email/i.test(message)) return 'Someone with that email is already on the team.'
   if (/shoot_days_one_per_person_per_date/.test(message)) return 'That person already has a shoot day on this date.'
   if (/availability_check|end_time > start_time/.test(message)) return 'End time must be after start time.'
-  if (/hours_check/.test(message)) return 'Shoot day hours must be more than 0 and at most 6.'
+  if (/hours_check/.test(message)) return 'Shoot day hours must be more than 0 and at most 4.';
   return message
 }
 
@@ -181,7 +181,7 @@ function shootDayFields(fd: FormData) {
   return {
     date: str(fd, 'date'),
     start_time: str(fd, 'start_time') || null,
-    hours: num(fd, 'hours') || 6,
+    hours: num(fd, 'hours') || 4,
     person_id: str(fd, 'person_id') || null,
     videos_planned: Math.max(0, Math.floor(num(fd, 'videos_planned') || 0)),
     status: str(fd, 'status') || 'free',

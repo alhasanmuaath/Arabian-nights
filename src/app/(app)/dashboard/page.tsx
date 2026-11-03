@@ -278,7 +278,7 @@ function ShootDayForm({ dates, models, day }: { dates: string[]; models: Person[
       <TimeSelect id={`${p}start`} name="start_time" label="Start (Cairo)" defaultValue={day?.start_time ? fmtTime(day.start_time) : '10:00'} />
       <div>
         <label htmlFor={`${p}hours`}>Hours (max 6)</label>
-        <input id={`${p}hours`} name="hours" type="number" min={0.5} max={6} step={0.5} defaultValue={day?.hours ?? 6} required />
+        <input id={`${p}hours`} name="hours" type="number" min={0.5} max={4} step={0.5} defaultValue={day?.hours ?? 4} required />
       </div>
       <div>
         <label htmlFor={`${p}videos`}>Videos planned</label>

@@ -22,7 +22,7 @@ export default async function MyPay() {
       <div>
         <h1>My pay</h1>
         <p className="muted">
-          Paid per completed shoot day (6 hours). Current rate: {money(targets.day_rate, cur)} per day.
+          Paid per completed shoot day (4 hours). Current rate: {money(targets.day_rate, cur)} per day.
         </p>
       </div>
 

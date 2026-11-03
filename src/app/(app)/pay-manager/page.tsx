@@ -38,7 +38,7 @@ export default async function PayManager() {
         <ActionForm action={updateDayRate} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="day_rate">Amount per completed day (6 h)</label>
+              <label htmlFor="day_rate">Amount per completed day (4 h)</label>
               <input id="day_rate" name="day_rate" type="number" min={0} step="0.01" defaultValue={targets.day_rate} required />
             </div>
             <div>

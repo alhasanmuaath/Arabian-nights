@@ -137,7 +137,7 @@ export default async function MyCalendar({
         <h1>My calendar</h1>
         <p className="muted">
           {fmtDate(targets.season_start)} – {fmtDate(targets.season_end)}
-          {' · '}Cairo time · max 6 h per day
+          {' · '}Cairo time · max 4 h per day
         </p>
 
         <p className="mt-1 text-sm">
@@ -342,7 +342,7 @@ export default async function MyCalendar({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2>{fmtDate(selected)}</h2>
           <span className="text-sm text-gray-700">
-            {fmtHours(dayUsed)} of 6 h approved
+            {fmtHours(dayUsed)} of 4 h approved
           </span>
         </div>
 
@@ -389,7 +389,7 @@ export default async function MyCalendar({
       <section className="card space-y-2">
         <h2>Add free time</h2>
         <p className="muted">
-          You can split a day into several windows, with up to 6 hours in total.
+          You can split a day into several windows, with up to 4 hours in total.
         </p>
 
         <AvailabilityForm
