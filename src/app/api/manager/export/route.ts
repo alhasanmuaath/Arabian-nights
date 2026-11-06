@@ -1,6 +1,7 @@
 
 import { getMe } from '../../../../lib/session'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 
 export const runtime = 'nodejs'
 
@@ -16,9 +17,7 @@ async function fetchAll(supabase: any, table: string): Promise<Row[]> {
       .select('*')
       .range(from, from + pageSize - 1)
 
-    if (error) {
-      throw new Error(`Could not export ${table}: ${error.message}`)
-    }
+    if (error) throw new Error(`Could not export ${table}`)
 
     const batch = (data ?? []) as Row[]
     rows.push(...batch)
@@ -29,27 +28,15 @@ async function fetchAll(supabase: any, table: string): Promise<Row[]> {
   return rows
 }
 
-function addSheet(
-  workbook: XLSX.WorkBook,
-  name: string,
-  rows: Row[],
-) {
+function createExcel(rows: Row[]): Buffer {
+  const workbook = XLSX.utils.book_new()
   const sheet = XLSX.utils.json_to_sheet(rows)
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Data')
 
-  if (rows.length > 0) {
-    const keys = Object.keys(rows[0])
-    sheet['!cols'] = keys.map((key) => ({
-      wch: Math.min(
-        Math.max(
-          key.length + 2,
-          ...rows.map((row) => String(row[key] ?? '').length + 2),
-        ),
-        40,
-      ),
-    }))
-  }
-
-  XLSX.utils.book_append_sheet(workbook, sheet, name)
+  return XLSX.write(workbook, {
+    bookType: 'xlsx',
+    type: 'buffer',
+  }) as Buffer
 }
 
 export async function GET() {
@@ -77,87 +64,60 @@ export async function GET() {
       people.map((person) => [person.id, person.name]),
     )
 
-    const peopleRows = people.map((person) => ({
-      id: person.id,
-      name: person.name,
-      email: person.email,
-      role: person.role,
-      access: person.access,
-      user_id: person.user_id,
-      created_at: person.created_at,
-    }))
-
     const availabilityRows = availability.map((item) => ({
-      id: item.id,
+      ...item,
       person: personNames.get(item.person_id) ?? item.person_id,
-      person_id: item.person_id,
-      date: item.date,
-      start_time: item.start_time,
-      end_time: item.end_time,
-      hours: item.hours,
-      status: item.status ?? 'Not available',
-      created_at: item.created_at,
     }))
 
     const approvedRows = availabilityRows.filter(
-      (item) => item.status === 'approved',
-    )
+  (item: Row) => item.status === 'approved',
+)
 
     const shootDayRows = shootDays.map((day) => ({
-      id: day.id,
-      date: day.date,
+      ...day,
       person: day.person_id
         ? personNames.get(day.person_id) ?? day.person_id
         : 'Unassigned',
-      person_id: day.person_id,
-      start_time: day.start_time,
-      hours: day.hours,
-      videos_planned: day.videos_planned,
-      status: day.status,
-      notes: day.notes,
-      created_at: day.created_at,
-      updated_at: day.updated_at,
     }))
 
     const paymentRows = payments.map((payment) => ({
-      id: payment.id,
+      ...payment,
       person: personNames.get(payment.person_id) ?? payment.person_id,
-      person_id: payment.person_id,
-      shoot_day_id: payment.shoot_day_id,
-      amount: payment.amount,
-      status: payment.status,
-      paid_at: payment.paid_at,
-      updated_at: payment.updated_at,
     }))
 
-    const workbook = XLSX.utils.book_new()
+    const sections = [
+      { name: 'People.xlsx', rows: people },
+      { name: 'Availability.xlsx', rows: availabilityRows },
+      { name: 'Approved-Schedule.xlsx', rows: approvedRows },
+      { name: 'Shoot-Days.xlsx', rows: shootDayRows },
+      { name: 'Payments.xlsx', rows: paymentRows },
+      { name: 'Settings.xlsx', rows: targets },
+    ]
 
-    addSheet(workbook, 'People', peopleRows)
-    addSheet(workbook, 'Availability', availabilityRows)
-    addSheet(workbook, 'Approved Schedule', approvedRows)
-    addSheet(workbook, 'Shoot Days', shootDayRows)
-    addSheet(workbook, 'Payments', paymentRows)
-    addSheet(workbook, 'Settings', targets)
+    const zip = new JSZip()
 
-    const file = XLSX.write(workbook, {
-      bookType: 'xlsx',
-      type: 'buffer',
-    }) as Buffer
+    for (const section of sections) {
+      zip.file(section.name, createExcel(section.rows))
+    }
 
-    return new Response(new Uint8Array(file), {
+    const zipBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+    })
+
+    return new Response(new Uint8Array(zipBuffer), {
       status: 200,
       headers: {
-        'Content-Type':
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Type': 'application/zip',
         'Content-Disposition':
-          'attachment; filename="Arabian-Nights-Data.xlsx"',
+          'attachment; filename="Arabian-Nights-Exports.zip"',
         'Cache-Control': 'no-store',
       },
     })
   } catch (error) {
     console.error('Manager export failed:', error)
 
-    return new Response('Could not generate the export file.', {
+    return new Response('Could not generate export files.', {
       status: 500,
     })
   }
