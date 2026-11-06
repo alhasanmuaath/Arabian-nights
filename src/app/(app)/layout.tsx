@@ -15,28 +15,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .eq('is_read', false)
 
   
+
 const links =
-  me.role === 'model'
+  me.role === 'manager'
     ? [
-        { href: '/calendar', label: 'My calendar' },
-        { href: '/progress', label: 'My progress' },
-        { href: '/pay', label: 'My pay' },
+        { href: '/dashboard', label: 'Dashboard' },
+        { href: '/pay-manager', label: 'Pay manager' },
+        { href: '/people', label: 'People' },
         { href: '/announcements', label: 'Announcements' },
-{ href: '/files', label: 'Shared Files' },
+        { href: '/files', label: 'Shared Files' },
+        { href: '/api/manager/export', label: 'Export Data' },
       ]
-    : me.role === 'manager'
+    : me.role === 'model'
       ? [
-          { href: '/dashboard', label: 'Dashboard' },
-          { href: '/pay-manager', label: 'Pay manager' },
-          { href: '/people', label: 'People' },
+          { href: '/calendar', label: 'Calendar' },
+          { href: '/progress', label: 'Progress' },
+          { href: '/pay', label: 'My Pay' },
           { href: '/announcements', label: 'Announcements' },
-{ href: '/files', label: 'Shared Files' },
+          { href: '/files', label: 'Shared Files' },
         ]
       : [
           { href: '/dashboard', label: 'Dashboard' },
           { href: '/announcements', label: 'Announcements' },
-{ href: '/files', label: 'Shared Files' },
+          { href: '/files', label: 'Shared Files' },
         ]
+
 
 
   const roleLabel =
