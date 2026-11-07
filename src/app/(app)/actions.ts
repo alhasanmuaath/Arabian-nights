@@ -523,7 +523,9 @@ export async function uploadSharedFile(
     .select('id')
     .single()
 
-  if (recordError) return { error: friendly(recordError.message) }
+  if (recordError) {
+  return { error: `Step 1 - Create file record: ${recordError.message}` }
+}
 
   const storagePath = `${record.id}/${safeName}`
 
@@ -533,9 +535,9 @@ export async function uploadSharedFile(
     .eq('id', record.id)
 
   if (updateError) {
-    await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: friendly(updateError.message) }
-  }
+  await supabase.from('shared_files').delete().eq('id', record.id)
+  return { error: `Step 2 - Update storage path: ${updateError.message}` }
+}
 
   const { error: uploadError } = await supabase.storage
     .from('shared-files')
@@ -559,10 +561,10 @@ export async function uploadSharedFile(
     )
 
   if (recipientError) {
-    await supabase.storage.from('shared-files').remove([storagePath])
-    await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: friendly(recipientError.message) }
-  }
+  await supabase.storage.from('shared-files').remove([storagePath])
+  await supabase.from('shared_files').delete().eq('id', record.id)
+  return { error: `Step 4 - Add recipients: ${recipientError.message}` }
+}
 
   revalidatePath('/', 'layout')
   return {
