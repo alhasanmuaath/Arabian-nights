@@ -363,26 +363,36 @@ export async function createAnnouncement(
 
   let recipientIds = selectedIds
 
-  if (allModels) {
-    const { data, error } = await supabase
-      .from('people')
-      .select('id')
-      .eq('role', 'model')
+if (allModels) {
+  const { data, error } = await supabase
+    .from('people')
+    .select('id')
+    .eq('role', 'model')
 
-    if (error) return { error: friendly(error.message) }
-    recipientIds = (data ?? []).map((person) => person.id)
-  } else if (recipientIds.length) {
+  if (error) return { error: friendly(error.message) }
+  recipientIds = (data ?? []).map((person) => person.id)
+} else if (recipientIds.length) {
+  const { data, error } = await supabase
+    .from('people')
+    .select('id')
+    .eq('role', 'model')
+    .in('id', recipientIds)
+
+  if (error) return { error: friendly(error.message) }
+
+  if ((data ?? []).length !== recipientIds.length) {
+    return { error: 'One or more selected recipients are invalid.' }
+  }
+} if (recipientIds.length) {
     const { data, error } = await supabase
       .from('people')
       .select('id')
       .eq('role', 'model')
       .in('id', recipientIds)
 
-    if (error) return { error: friendly(error.message) }
-
-    if ((data ?? []).length !== recipientIds.length) {
-      return { error: 'One or more selected recipients are invalid.' }
-    }
+    if (error) {
+  return { error: `Step B - Validate selected models: ${error.message}` }
+}
   }
 
   if (!recipientIds.length) {
@@ -441,7 +451,8 @@ export async function deleteAnnouncement(
 
 // ---------- shared files (manager / edit members) ----------
 
-export async function uploadSharedFile(
+
+  export async function uploadSharedFile(
   _p: ActionState,
   fd: FormData,
 ): Promise<ActionState> {
@@ -485,7 +496,10 @@ export async function uploadSharedFile(
       .select('id')
       .eq('role', 'model')
 
-    if (error) return { error: friendly(error.message) }
+    if (error) {
+      return { error: `Step A - Load all models: ${error.message}` }
+    }
+
     recipientIds = (data ?? []).map((person) => person.id)
   } else if (recipientIds.length) {
     const { data, error } = await supabase
@@ -494,7 +508,9 @@ export async function uploadSharedFile(
       .eq('role', 'model')
       .in('id', recipientIds)
 
-    if (error) return { error: friendly(error.message) }
+    if (error) {
+      return { error: `Step B - Validate selected models: ${error.message}` }
+    }
 
     if ((data ?? []).length !== recipientIds.length) {
       return { error: 'One or more selected recipients are invalid.' }
@@ -524,8 +540,8 @@ export async function uploadSharedFile(
     .single()
 
   if (recordError) {
-  return { error: `Step 1 - Create file record: ${recordError.message}` }
-}
+    return { error: `Step 1 - Create file record: ${recordError.message}` }
+  }
 
   const storagePath = `${record.id}/${safeName}`
 
@@ -535,9 +551,9 @@ export async function uploadSharedFile(
     .eq('id', record.id)
 
   if (updateError) {
-  await supabase.from('shared_files').delete().eq('id', record.id)
-  return { error: `Step 2 - Update storage path: ${updateError.message}` }
-}
+    await supabase.from('shared_files').delete().eq('id', record.id)
+    return { error: `Step 2 - Update storage path: ${updateError.message}` }
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('shared-files')
@@ -548,7 +564,7 @@ export async function uploadSharedFile(
 
   if (uploadError) {
     await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: friendly(uploadError.message) }
+    return { error: `Step 3 - Upload to Storage: ${uploadError.message}` }
   }
 
   const { error: recipientError } = await supabase
@@ -561,10 +577,10 @@ export async function uploadSharedFile(
     )
 
   if (recipientError) {
-  await supabase.storage.from('shared-files').remove([storagePath])
-  await supabase.from('shared_files').delete().eq('id', record.id)
-  return { error: `Step 4 - Add recipients: ${recipientError.message}` }
-}
+    await supabase.storage.from('shared-files').remove([storagePath])
+    await supabase.from('shared_files').delete().eq('id', record.id)
+    return { error: `Step 4 - Add recipients: ${recipientError.message}` }
+  }
 
   revalidatePath('/', 'layout')
   return {
@@ -606,8 +622,12 @@ export async function deleteSharedFile(
     .eq('id', id)
     .select('id')
 
-  if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: 'Could not delete the file record.' }
+    if (error) return { error: friendly(error.message) }
 
-  return done('File deleted.')
+  if (!data?.length) {
+    return { error: 'File not found or permission denied.' }
+  }
+
+  revalidatePath('/', 'layout')
+  return { ok: 'File deleted.' }
 }
