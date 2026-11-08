@@ -3,8 +3,13 @@ import { redirect } from 'next/navigation'
 import { Nav } from '@/components/Nav'
 import { getMe } from '@/lib/session'
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const { supabase, user, me } = await getMe()
+
   if (!user) redirect('/login')
   if (!me) redirect('/no-access')
 
@@ -14,36 +19,40 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .eq('person_id', me.id)
     .eq('is_read', false)
 
-  
-
-const links =
-  me.role === 'manager'
-    ? [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/pay-manager', label: 'Pay manager' },
-        { href: '/people', label: 'People' },
-        { href: '/announcements', label: 'Announcements' },
-        { href: '/files', label: 'Shared Files' },
-        { href: '/api/manager/export', label: 'Export Data' },
-      ]
-    : me.role === 'model'
+  const links =
+    me.role === 'manager'
       ? [
-          { href: '/calendar', label: 'Calendar' },
-          { href: '/progress', label: 'Progress' },
-          { href: '/pay', label: 'My Pay' },
-          { href: '/announcements', label: 'Announcements' },
-          { href: '/files', label: 'Shared Files' },
-        ]
-      : [
           { href: '/dashboard', label: 'Dashboard' },
+          { href: '/pay-manager', label: 'Pay manager' },
+          { href: '/people', label: 'People' },
           { href: '/announcements', label: 'Announcements' },
           { href: '/files', label: 'Shared Files' },
+          { href: '/api/manager/export', label: 'Export Data' },
         ]
-
-
+      : me.role === 'model'
+        ? [
+            { href: '/calendar', label: 'Calendar' },
+            { href: '/progress', label: 'Progress' },
+            { href: '/pay', label: 'My Pay' },
+            { href: '/announcements', label: 'Announcements' },
+            { href: '/files', label: 'Shared Files' },
+          ]
+        : me.role === 'photographer'
+          ? [
+              { href: '/photographer', label: 'My Dashboard' },
+              { href: '/announcements', label: 'Announcements' },
+              { href: '/files', label: 'Shared Files' },
+            ]
+          : [
+              { href: '/dashboard', label: 'Dashboard' },
+              { href: '/announcements', label: 'Announcements' },
+              { href: '/files', label: 'Shared Files' },
+            ]
 
   const roleLabel =
-    me.role === 'member' ? `member · ${me.access === 'edit' ? 'can edit' : 'view only'}` : me.role
+    me.role === 'member'
+      ? `member · ${me.access === 'edit' ? 'can edit' : 'view only'}`
+      : me.role
 
   return (
     <div className="min-h-screen">
@@ -55,15 +64,22 @@ const links =
               {me.name} · {roleLabel}
             </p>
           </div>
+
           <form action="/auth/signout" method="post">
-            <button className="btn border-gray-300 bg-white text-gray-800">Log out</button>
+            <button className="btn border-gray-300 bg-white text-gray-800">
+              Log out
+            </button>
           </form>
         </div>
+
         <div className="mx-auto max-w-3xl">
           <Nav links={links} unreadCount={count ?? 0} />
         </div>
       </header>
-      <main className="mx-auto max-w-3xl space-y-4 px-4 py-4 pb-16">{children}</main>
+
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-4 pb-16">
+        {children}
+      </main>
     </div>
   )
 }

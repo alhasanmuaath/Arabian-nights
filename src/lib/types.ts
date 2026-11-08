@@ -1,4 +1,4 @@
-export type Role = 'manager' | 'model' | 'member'
+export type Role = 'manager' | 'model' | 'member' | 'photographer'
 export type Access = 'view' | 'edit'
 export type ShootStatus = 'free' | 'offered' | 'confirmed' | 'completed'
 export type PayStatus = 'paid' | 'not_paid'

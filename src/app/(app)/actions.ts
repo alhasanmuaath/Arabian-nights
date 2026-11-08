@@ -213,7 +213,105 @@ export async function deleteShootDay(_p: ActionState, fd: FormData): Promise<Act
   if (!data?.length) return { error: "You don't have permission to do that." }
   return done('Shoot day deleted.')
 }
+// ---------- photographer assignments (manager only) ----------
 
+export async function assignPhotographer(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  if (me.role !== 'manager') {
+    return { error: 'Only the manager can assign photographers.' }
+  }
+
+  const shoot_day_id = str(fd, 'shoot_day_id')
+  const photographer_id = str(fd, 'photographer_id')
+  const agreed_amount = num(fd, 'agreed_amount')
+
+  if (!shoot_day_id || !photographer_id) {
+    return { error: 'Select a shoot and a photographer.' }
+  }
+
+  if (!Number.isFinite(agreed_amount) || agreed_amount < 0) {
+    return { error: 'Enter a valid agreed payment amount.' }
+  }
+
+  const { data: photographer, error: personError } = await supabase
+    .from('people')
+    .select('id')
+    .eq('id', photographer_id)
+    .eq('role', 'photographer')
+    .maybeSingle()
+
+  if (personError) return { error: friendly(personError.message) }
+  if (!photographer) return { error: 'The selected person is not a photographer.' }
+
+  const { error } = await supabase
+    .from('shoot_photographers')
+    .insert({
+      shoot_day_id,
+      photographer_id,
+      agreed_amount,
+    })
+
+  if (error) {
+    if (error.code === '23505') {
+      return { error: 'This photographer is already assigned to this shoot.' }
+    }
+    return { error: friendly(error.message) }
+  }
+
+  revalidatePath('/', 'layout')
+  return done('Photographer assigned.')
+}
+
+export async function updatePhotographerAgreement(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  if (me.role !== 'manager') {
+    return { error: 'Only the manager can change photographer payments.' }
+  }
+
+  const id = str(fd, 'id')
+  const agreed_amount = num(fd, 'agreed_amount')
+
+  if (!id || !Number.isFinite(agreed_amount) || agreed_amount < 0) {
+    return { error: 'Enter a valid agreed payment amount.' }
+  }
+
+  const { data, error } = await supabase
+    .from('shoot_photographers')
+    .update({ agreed_amount })
+    .eq('id', id)
+    .select('id')
+
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: "You don't have permission to update this assignment." }
+
+  revalidatePath('/', 'layout')
+  return done('Agreed payment updated.')
+}
+
+export async function removePhotographerAssignment(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+
+  if (me.role !== 'manager') {
+    return { error: 'Only the manager can remove photographer assignments.' }
+  }
+
+  const id = str(fd, 'id')
+  if (!id) return { error: 'Missing photographer assignment.' }
+
+  const { data, error } = await supabase
+    .from('shoot_photographers')
+    .delete()
+    .eq('id', id)
+    .select('id')
+
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: "You don't have permission to remove this assignment." }
+
+  revalidatePath('/', 'layout')
+  return done('Photographer removed from this shoot.')
+}
 // ---------- targets & pay (manager) ----------
 export async function updateTargets(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
@@ -245,7 +343,18 @@ export async function updateDayRate(_p: ActionState, fd: FormData): Promise<Acti
   if (error) return { error: friendly(error.message) }
   if (!data?.length) return { error: "You don't have permission to do that." }
   if (fd.get('apply_unpaid')) {
-    const { error: e2 } = await supabase.from('pay').update({ amount: day_rate }).eq('status', 'not_paid')
+    const { error: e2 } = await supabase
+  .from('pay')
+  .update({ amount: day_rate })
+  .eq('status', 'not_paid')
+  .in(
+    'person_id',
+    (await supabase
+      .from('people')
+      .select('id')
+      .eq('role', 'model')
+    ).data?.map((person) => person.id) ?? []
+  )
     if (e2) return { error: friendly(e2.message) }
     return done('Day rate saved and applied to all unpaid days.')
   }
@@ -286,13 +395,36 @@ async function sendInvite(email: string): Promise<string> {
 
 export async function invitePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
-  if (me.role !== 'manager') return { error: 'Only the manager can invite people.' }
+
+  if (me.role !== 'manager') {
+    return { error: 'Only the manager can invite people.' }
+  }
+
   const email = str(fd, 'email').toLowerCase()
   const name = str(fd, 'name')
   const role = str(fd, 'role')
-  if (!name || !email.includes('@')) return { error: 'Enter a name and a valid email.' }
-  const { error } = await supabase.from('people').insert({ name, email, role, access: str(fd, 'access') || 'view' })
+  const access = str(fd, 'access') || 'view'
+
+  const allowedRoles = ['model', 'photographer', 'member', 'manager']
+
+  if (!name || !email.includes('@')) {
+    return { error: 'Enter a name and a valid email.' }
+  }
+
+  if (!allowedRoles.includes(role)) {
+    return { error: 'Invalid role selected.' }
+  }
+
+  if (!['view', 'edit'].includes(access)) {
+    return { error: 'Invalid access level.' }
+  }
+
+  const { error } = await supabase
+    .from('people')
+    .insert({ name, email, role, access })
+
   if (error) return { error: friendly(error.message) }
+
   const note = await sendInvite(email)
   return done(`${name} added.${note}`)
 }
@@ -305,16 +437,46 @@ export async function resendInvite(_p: ActionState, fd: FormData): Promise<Actio
 
 export async function updatePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
+
+  if (me.role !== 'manager') {
+    return { error: 'Only the manager can update team members.' }
+  }
+
   const id = str(fd, 'id')
   const role = str(fd, 'role')
-  if (id === me.id && role !== 'manager') return { error: "You can't remove your own manager role." }
+  const name = str(fd, 'name')
+  const access = str(fd, 'access') || 'view'
+
+  const allowedRoles = ['model', 'photographer', 'member', 'manager']
+
+  if (!id || !name) {
+    return { error: 'Enter a name.' }
+  }
+
+  if (!allowedRoles.includes(role)) {
+    return { error: 'Invalid role selected.' }
+  }
+
+  if (!['view', 'edit'].includes(access)) {
+    return { error: 'Invalid access level.' }
+  }
+
+  if (id === me.id && role !== 'manager') {
+    return { error: "You can't remove your own manager role." }
+  }
+
   const { data, error } = await supabase
     .from('people')
-    .update({ name: str(fd, 'name'), role, access: str(fd, 'access') || 'view' })
+    .update({ name, role, access })
     .eq('id', id)
     .select('id')
+
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+
+  if (!data?.length) {
+    return { error: "You don't have permission to do that." }
+  }
+
   return done('Saved.')
 }
 

@@ -7,10 +7,26 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate, fmtHours, fmtTime, seasonDates } from '@/lib/dates'
 import { canEditAll, getTargets, requireRole } from '@/lib/session'
 import type { Availability, Person, ShootDay, Targets } from '@/lib/types'
-import { createShootDay, deleteAvailability, deleteShootDay, reviewAvailability, updateShootDay, updateTargets } from '../actions'
+import {
+  assignPhotographer,
+  createShootDay,
+  deleteAvailability,
+  deleteShootDay,
+  removePhotographerAssignment,
+  reviewAvailability,
+  updatePhotographerAgreement,
+  updateShootDay,
+  updateTargets,
+} from '../actions'
 
 const STATUSES = ['free', 'offered', 'confirmed', 'completed'] as const
-
+type ShootPhotographer = {
+  id: string
+  shoot_day_id: string
+  photographer_id: string
+  agreed_amount: number
+  people: Pick<Person, 'name'> | null
+}
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ person?: string }> }) {
   const { supabase, me } = await requireRole('manager', 'member')
   const canEdit = canEditAll(me)
@@ -19,14 +35,29 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const dates = seasonDates(targets.season_start, targets.season_end)
   const { person: personFilter } = await searchParams
 
-  const [{ data: p }, { data: a }, { data: s }] = await Promise.all([
-    supabase.from('people').select('*').order('name'),
-    supabase.from('availability').select('*').order('date').order('start_time'),
-    supabase.from('shoot_days').select('*').order('date').order('created_at'),
-  ])
+  const [{ data: p }, { data: a }, { data: s }, { data: sp }] = await Promise.all([
+  supabase.from('people').select('*').order('name'),
+  supabase.from('availability').select('*').order('date').order('start_time'),
+  supabase.from('shoot_days').select('*').order('date').order('created_at'),
+  supabase
+    .from('shoot_photographers')
+    .select('id, shoot_day_id, photographer_id, agreed_amount, people!shoot_photographers_photographer_id_fkey(name)')
+    .order('created_at'),
+])
   const people = (p ?? []) as Person[]
   const avail = (a ?? []) as Availability[]
   const shoots = (s ?? []) as ShootDay[]
+  const photographerAssignments = (sp ?? []) as unknown as ShootPhotographer[]
+  
+  const photographers = people.filter((x) => x.role === 'photographer')
+  const assignmentsByShoot = new Map<string, ShootPhotographer[]>()
+
+  for (const assignment of photographerAssignments) {
+    assignmentsByShoot.set(
+      assignment.shoot_day_id,
+      [...(assignmentsByShoot.get(assignment.shoot_day_id) ?? []), assignment],
+    )
+  }
   const models = people.filter((x) => x.role === 'model')
   const nameOf = new Map(people.map((x) => [x.id, x.name]))
 
@@ -91,6 +122,91 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                   <summary className="cursor-pointer text-sm text-gray-700 underline">Edit</summary>
                   <div className="mt-2 rounded border border-gray-200 p-3">
                     <ShootDayForm dates={dates} models={models} day={d} />
+                    {isManager && (
+  <div className="mt-4 space-y-3 border-t pt-3">
+    <h3 className="font-medium">Photographers assigned</h3>
+
+    {(assignmentsByShoot.get(d.id) ?? []).length === 0 && (
+      <p className="text-sm text-gray-600">No photographers assigned.</p>
+    )}
+
+    {(assignmentsByShoot.get(d.id) ?? []).map((assignment) => (
+      <div key={assignment.id} className="flex flex-wrap items-end gap-2 rounded border p-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">
+            {assignment.people?.name ?? 'Photographer'}
+          </p>
+          <ActionForm action={updatePhotographerAgreement} className="mt-2 flex items-end gap-2">
+            <input type="hidden" name="id" value={assignment.id} />
+            <div>
+              <label htmlFor={`agreement-${assignment.id}`} className="text-xs">
+                Agreed amount ({targets.currency})
+              </label>
+              <input
+                id={`agreement-${assignment.id}`}
+                name="agreed_amount"
+                type="number"
+                min={0}
+                step="0.01"
+                defaultValue={assignment.agreed_amount}
+                className="w-32"
+                required
+              />
+            </div>
+            <SubmitButton variant="secondary">Save amount</SubmitButton>
+          </ActionForm>
+        </div>
+
+        <SmallAction
+          action={removePhotographerAssignment}
+          fields={{ id: assignment.id }}
+          label="Remove"
+          variant="danger"
+        />
+      </div>
+    ))}
+
+    {photographers.length > 0 ? (
+      <ActionForm action={assignPhotographer} className="grid grid-cols-2 gap-2 rounded border p-3">
+        <input type="hidden" name="shoot_day_id" value={d.id} />
+        <div className="col-span-2">
+          <label htmlFor={`photographer-${d.id}`}>Add photographer</label>
+          <select id={`photographer-${d.id}`} name="photographer_id" required defaultValue="">
+            <option value="">Choose photographer</option>
+            {photographers
+              .filter((person) => !(assignmentsByShoot.get(d.id) ?? []).some(
+                (assignment) => assignment.photographer_id === person.id
+              ))
+              .map((person) => (
+                <option key={person.id} value={person.id}>{person.name}</option>
+              ))}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label htmlFor={`new-agreement-${d.id}`}>
+            Agreed amount ({targets.currency})
+          </label>
+          <input
+            id={`new-agreement-${d.id}`}
+            name="agreed_amount"
+            type="number"
+            min={0}
+            step="0.01"
+            defaultValue={0}
+            required
+          />
+        </div>
+        <div className="col-span-2">
+          <SubmitButton>Add photographer</SubmitButton>
+        </div>
+      </ActionForm>
+    ) : (
+      <p className="text-sm text-gray-600">
+        No photographer accounts yet. Add one in People first.
+      </p>
+    )}
+  </div>
+)}
                     <div className="mt-2">
                       <SmallAction action={deleteShootDay} fields={{ id: d.id }} label="Delete shoot day" variant="danger" />
                     </div>

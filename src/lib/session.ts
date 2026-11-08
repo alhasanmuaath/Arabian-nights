@@ -34,5 +34,7 @@ export function canEditAll(me: Person) {
 }
 
 export function homeFor(me: Person) {
-  return me.role === 'model' ? '/calendar' : '/dashboard'
+  if (me.role === 'model') return '/calendar'
+  if (me.role === 'photographer') return '/photographer'
+  return '/dashboard'
 }

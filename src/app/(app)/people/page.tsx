@@ -11,6 +11,7 @@ function RoleFields({ prefix, person }: { prefix: string; person?: Person }) {
         <label htmlFor={`${prefix}role`}>Role</label>
         <select id={`${prefix}role`} name="role" defaultValue={person?.role ?? 'model'}>
           <option value="model">Model: sees only her own data</option>
+          <option value="photographer">Photographer: sees assigned shoots and own data</option>
           <option value="member">Member: sees all schedules</option>
           <option value="manager">Manager: full control</option>
         </select>
