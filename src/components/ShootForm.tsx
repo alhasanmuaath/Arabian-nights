@@ -61,6 +61,22 @@ export function ShootForm({
           <label htmlFor={`${p}mpoint`}>Meeting point</label>
           <input id={`${p}mpoint`} name="meeting_point" maxLength={200} defaultValue={day?.meeting_point ?? ''} placeholder="e.g. Gate 2, Mall of Arabia" />
         </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={`${p}murl`}>Google Maps link for the meeting spot</label>
+          <input id={`${p}murl`} name="meeting_url" inputMode="url" maxLength={500} defaultValue={day?.meeting_url ?? ''} placeholder="https://maps.app.goo.gl/…" />
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={`${p}minst`}>Instructions for the crew</label>
+          <textarea
+            id={`${p}minst`}
+            name="meeting_instructions"
+            dir="auto"
+            rows={3}
+            maxLength={2000}
+            defaultValue={day?.meeting_instructions ?? ''}
+            placeholder="How to find us, who to call when you arrive, where to park, what to bring…"
+          />
+        </div>
       </fieldset>
 
       <fieldset className="grid gap-3 sm:grid-cols-2">

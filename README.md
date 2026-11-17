@@ -45,7 +45,7 @@ invitation links stop working after 1 hour. A reset code can be requested once a
 ## Screens
 
 Home (next shoot, crew, answers needed, season progress, latest news) · Shoots (calendar + list) ·
-Shoot day (meeting point and time, location and map link, photos, scripts, crew, comments) ·
+Shoot day (meeting point, time, map link and instructions, location and map link, photos, scripts, crew, comments) ·
 News · Files · My pay / Pay (manager) · People (manager) · Notifications · Me.
 
 ## Split shoot days
@@ -53,6 +53,15 @@ News · Files · My pay / Pay (manager) · People (manager) · Notifications · 
 A shoot day can run in two sessions, for example 2 hours in the morning and 2 hours in the evening. Tick
 "Split into two sessions" when creating or editing a shoot day and give each session a start time and hours.
 It is still one shoot day: one crew, one payment, and both sessions together are at most 4 hours.
+
+## Motion
+
+The app moves in depth. Screens turn sideways between tabs, a shoot day opens toward you and returns when you go
+back, the sky has three layers that drift at different speeds, cards lean toward the pointer or a pressed finger, and
+small things arrive with their own move (calendar leaf flip, avatars, progress bars, the sliding tab highlight).
+Only transform and opacity are animated, each move is under half a second, and all of it switches off when the
+device asks for reduced motion. The rules live at the end of `src/app/globals.css`; the screen changes are set in
+`src/app/(app)/template.tsx`.
 
 ## Speed
 

@@ -35,7 +35,16 @@ const latestCode = async (email, after) => {
   const full = await newMail(email, after, 'reset code')
   return (full.Text || full.HTML).match(/\b(\d{6})\b/)[1]
 }
-const phone = (browser) => browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+// MOTION=reduce runs the suite the way a phone with "reduce motion" switched on sees the app.
+const REDUCED = process.env.MOTION === 'reduce'
+const phone = (browser) =>
+  browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    reducedMotion: REDUCED ? 'reduce' : 'no-preference',
+  })
 
 async function login(browser, email, password = PASSWORD) {
   const ctx = await phone(browser)
@@ -183,6 +192,8 @@ async function openShoot(page, title) {
     await openShoot(page, 'Sunset desert shoot')
     t = await main(page)
     check('shoot day shows meeting point and time', /Parking, next to the main gate/.test(t) && /15:00/.test(t))
+    check('shoot day shows a map link for the meeting spot', (await page.locator('a[href="https://maps.app.goo.gl/meet-example"]').count()) === 1)
+    check('shoot day shows the meeting instructions', /Park in zone B\. Call Omar when you arrive\./.test(t) && /Bring your ID for the gate\./.test(t))
     check('shoot day shows location and a maps link', /Desert road/.test(t) && (await page.locator('a[href="https://maps.app.goo.gl/example"]').count()) === 1)
     check('shoot day shows the script (Arabic + English)', /المشهد الأول/.test(t) && /Sara walks into the tent/.test(t))
     check('model sees the full crew with answers', /Hala/.test(t) && /Omar Organizer/.test(t))
@@ -238,11 +249,14 @@ async function openShoot(page, title) {
     await form.locator('input[name=meeting_point]').fill('Reception')
     await form.locator('input[name=location_name]').fill('Arabian Night camp')
     await form.locator('input[name=location_url]').fill('maps.app.goo.gl/new')
+    await form.locator('input[name=meeting_url]').fill('maps.app.goo.gl/meet-new')
+    await form.locator('textarea[name=meeting_instructions]').fill('Ask for Omar at reception.')
     for (const n of ['Sara', 'Hala', 'Karim Photo', 'Omar Organizer']) await form.locator('label', { hasText: n }).first().click()
     await form.locator('button:has-text("Create shoot day")').click()
     await page.waitForURL(/\/shoots\/[0-9a-f-]{36}$/)
     t = await main(page)
     check('manager creates a shoot day with crew and details', /Majlis night/.test(t) && /Reception/.test(t) && /Sara/.test(t) && /Omar Organizer/.test(t))
+    check('meeting link and instructions are saved and shown', (await page.locator('a[href="https://maps.app.goo.gl/meet-new"]').count()) === 1 && /Ask for Omar at reception\./.test(t))
     check('map link without https:// is fixed', (await page.locator('a[href="https://maps.app.goo.gl/new"]').count()) === 1)
     const newDayUrl = page.url()
 
@@ -280,7 +294,8 @@ async function openShoot(page, title) {
     await page.locator('fieldset label', { hasText: 'Sara' }).first().click()
     await page.locator('button:has-text("Upload and share")').click()
     await page.waitForSelector('text=File shared with 1 person.')
-    check('manager uploads and shares a file', /brief\.pdf/.test(await main(page)))
+    const listed = await page.locator('article', { hasText: 'brief.pdf' }).waitFor({ timeout: 8000 }).then(() => true, () => false)
+    check('manager uploads and shares a file (it appears in the list without a reload)', listed)
     // split day: 2 h in the morning + 2 h in the evening
     await page.goto(BASE + '/shoots#new')
     const f2 = page.locator('#new')
@@ -382,7 +397,10 @@ async function openShoot(page, title) {
     await page.waitForSelector('text=1 photo uploaded.')
     await page.waitForSelector('img[alt]')
     const img = await page.locator('main img').first()
-    const w = await img.evaluate((el) => el.naturalWidth)
+    await img.scrollIntoViewIfNeeded()
+    const w = await img.evaluate(
+      (el) => new Promise((resolve) => (el.complete && el.naturalWidth ? resolve(el.naturalWidth) : (el.onload = () => resolve(el.naturalWidth), setTimeout(() => resolve(el.naturalWidth), 8000)))),
+    )
     check('organizer uploads a photo (shrunk to 1920px) and it displays', w > 0 && w <= 1920, w)
     await shot(page, '08-shoot-organizer')
 
@@ -475,6 +493,45 @@ async function openShoot(page, title) {
     const resent = await newMail('sara@example.com', resendAt, 'reset code')
     check('resending to an existing account emails a 6-digit reset code', /\b\d{6}\b/.test(resent.Text))
     await shot(page, '10-people')
+    await ctx.close()
+  }
+
+  // ================= motion: screens move in depth (or not at all with "reduce motion") =================
+  {
+    const { ctx, page } = await login(browser, 'hala@example.com')
+    await sleep(1200)
+    /** Click, then report which screen-change animations ran. */
+    const moves = async (click) => {
+      await click()
+      await page
+        .waitForFunction(() => document.getAnimations().some((a) => (a.effect?.pseudoElement || '').includes('view-transition')), null, { timeout: 4000, polling: 'raf' })
+        .catch(() => {})
+      const names = await page.evaluate(() => document.getAnimations().map((a) => a.animationName || '').filter((n) => n.startsWith('vt-')))
+      await sleep(900)
+      return names.sort().join(',')
+    }
+    const next = await moves(() => page.locator('nav a[href="/shoots"]:visible').first().click())
+    const open = await moves(() => page.locator('main a.row').first().click())
+    const back = await moves(() => page.locator('a:has-text("All shoot days")').click())
+    const prev = await moves(() => page.locator('nav a[href="/dashboard"]:visible').first().click())
+    if (REDUCED) {
+      check('reduce motion: no screen moves at all', next + open + back + prev === '', [next, open, back, prev].join(' | '))
+    } else {
+      check('a tab to the right turns the screen left-to-right', next === 'vt-in-right,vt-out-left', next)
+      check('opening a shoot day comes from the front', open === 'vt-from-front,vt-push-back', open)
+      check('going back returns it', back === 'vt-from-back,vt-to-front', back)
+      check('a tab to the left turns the other way', prev === 'vt-in-left,vt-out-right', prev)
+    }
+    const clean = await page.evaluate(() => {
+      const m = document.querySelector('main')
+      const hidden = [...m.querySelectorAll('*')].filter((el) => Number(getComputedStyle(el).opacity) < 0.5 && el.getBoundingClientRect().height > 0 && !el.closest('[aria-hidden]')).length
+      const running = document.getAnimations().filter((a) => (a.effect?.pseudoElement || '').includes('view-transition')).length
+      return hidden === 0 && running === 0
+    })
+    check('after the moves nothing is left faded or mid-air', clean)
+    check('the screens ended in the right place', page.url().endsWith('/dashboard') && /Hala/.test(await main(page)))
+    const pill = await page.locator('.tab-pill').evaluate((el) => getComputedStyle(el).transform)
+    check('the tab highlight is back under Home', pill === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(pill), pill)
     await ctx.close()
   }
 

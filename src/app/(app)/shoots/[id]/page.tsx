@@ -80,12 +80,12 @@ export default async function ShootPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <Link href="/shoots" className="link inline-flex items-center gap-1 text-sm">
+      <Link href="/shoots" transitionTypes={['drill-out']} className="link inline-flex items-center gap-1 text-sm">
         <Icon name="chevron" size={14} className="rotate-180" /> All shoot days
       </Link>
 
       {/* ---------- header ---------- */}
-      <section className="glass glass-hero glass-pad">
+      <section className="glass glass-hero glass-pad" data-tilt>
         <div className="flex items-start gap-4">
           <DateBlock date={day.date} size="lg" />
           <div className="min-w-0 flex-1">
@@ -140,11 +140,24 @@ export default async function ShootPage({ params }: { params: Promise<{ id: stri
             <Icon name="clock" className="text-gold-300" />
             <h2>Meeting point &amp; time</h2>
           </div>
-          {day.meeting_time || day.meeting_point ? (
+          {day.meeting_time || day.meeting_point || day.meeting_url || day.meeting_instructions ? (
             <>
               <p className="num text-3xl font-bold tracking-tight">{day.meeting_time ? fmtTime(day.meeting_time) : '—'}</p>
               <p className="faint">Cairo time</p>
               {day.meeting_point && <p className="mt-2 text-[15px] font-medium">{day.meeting_point}</p>}
+              {day.meeting_url && (
+                <a href={day.meeting_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm mt-3">
+                  <Icon name="pin" size={15} /> Open meeting spot in Maps
+                </a>
+              )}
+              {day.meeting_instructions && (
+                <div className="mt-4 rounded-2xl border border-white/12 bg-night-950/30 p-3.5">
+                  <p className="eyebrow mb-1.5">Instructions</p>
+                  <p dir="auto" className="prose-plain text-ink">
+                    {day.meeting_instructions}
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <p className="muted">The manager has not set the meeting point yet.</p>

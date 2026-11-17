@@ -61,6 +61,8 @@ const days = [
     meeting_time: '10:15', meeting_point: 'Gate 2', location_name: 'Arabian Night camp', crew: ['Sara', 'Hala', 'Karim Photo'] },
   { date: '2026-11-20', title: 'Sunset desert shoot', start_time: '16:00', hours: 4, videos_planned: 5, status: 'planned',
     meeting_time: '15:00', meeting_point: 'Parking, next to the main gate',
+    meeting_url: 'https://maps.app.goo.gl/meet-example',
+    meeting_instructions: 'Park in zone B. Call Omar when you arrive.\nBring your ID for the gate.',
     location_name: 'Arabian Night camp', location_address: 'Desert road, 6th of October', location_url: 'https://maps.app.goo.gl/example',
     notes: 'Bring two outfits. Photographer: golden hour from 17:30.',
     crew: ['Sara', 'Hala', 'Zaid', 'Karim Photo', 'Omar Organizer'] },

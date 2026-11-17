@@ -217,7 +217,7 @@ select pg_temp.check('organizer cannot delete the manager''s script',
 reset role;
 
 select pg_temp.check('location change told the crew who have not declined, not the organizer himself',
-  (select count(*) = 2 from notifications where title = 'Shoot day updated' and message like '%location changed%'));
+  (select count(*) = 2 from notifications where title = 'Shoot day updated' and message like 'Fri 20 Nov%location changed%'));
 
 -- ---------------------------------------------------------------- manager
 select pg_temp.login_as('boss@t.test');
@@ -277,6 +277,14 @@ select pg_temp.check('crew edits keep custom amounts (runs)',
 select pg_temp.check('crew edits keep custom amounts (result)',
   (select amount = 650 from pay where person_id = (select id from people where email = 'photo@t.test') and shoot_day_id = 'aaaaaaaa-0000-0000-0000-00000000000a'));
 
+-- meeting spot: map link + instructions
+select pg_temp.check('manager sets the meeting link and instructions (runs)',
+  pg_temp.raises($q$update shoot_days set meeting_url = 'https://maps.app.goo.gl/meet', meeting_instructions = '  Park in zone B.  ' where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
+select pg_temp.check('meeting link and instructions are stored (trimmed)',
+  (select meeting_url = 'https://maps.app.goo.gl/meet' and meeting_instructions = 'Park in zone B.' from shoot_days where id = 'cccccccc-0000-0000-0000-00000000000c'));
+select pg_temp.check('a meeting link must be http(s)',
+  pg_temp.raises($q$update shoot_days set meeting_url = 'javascript:alert(1)' where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_meeting_url_check%');
+
 -- split days: two sessions, one day (total at most 4 h)
 select pg_temp.check('a split day is accepted (runs)',
   pg_temp.raises($q$update shoot_days set start_time = '10:00', hours = 4, second_start_time = '18:00', second_hours = 2 where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
@@ -312,8 +320,8 @@ select pg_temp.check('manager deletes a comment by anyone (result)',
   (select count(*) = 0 from comments where target_type = 'announcement' and person_id = (select id from people where email = 'sara@t.test')));
 reset role;
 
-select pg_temp.check('changing the sessions told the crew (Sara and Photo, three times: split, undo, split again)',
-  (select count(*) = 6 from notifications where message like 'Sat 28 Nov%Date, time, meeting point or location changed%'));
+select pg_temp.check('changing the meeting details or sessions told the crew (Sara and Photo, four times: meeting, split, undo, split again)',
+  (select count(*) = 8 from notifications where message like 'Sat 28 Nov%Date, time, meeting point, instructions or location changed%'));
 select pg_temp.check('cancelling Day C told the crew (Sara and Photo)',
   (select count(*) = 2 from notifications where message like '%was cancelled%'));
 select pg_temp.check('comments notified the manager and the item owner',

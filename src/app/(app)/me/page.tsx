@@ -50,7 +50,7 @@ export default async function Me() {
               {inner}
             </a>
           ) : (
-            <Link key={l.href} href={l.href} className={cls}>
+            <Link key={l.href} href={l.href} transitionTypes={['drill-in']} className={cls}>
               {inner}
             </Link>
           )

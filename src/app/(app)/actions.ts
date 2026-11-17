@@ -19,7 +19,7 @@ function friendly(message: string): string {
   if (/row-level security|permission denied/i.test(message)) return NO
   if (/people_email_key|duplicate key.*email/i.test(message)) return 'Someone with that email is already on the team.'
   if (/shoot_attendees_shoot_day_id_person_id_key/.test(message)) return 'That person is already on the crew list.'
-  if (/shoot_days_location_url_check/.test(message)) return 'The map link must start with https://'
+  if (/shoot_days_(location|meeting)_url_check/.test(message)) return 'The map link must start with https://'
   if (/hours_check/.test(message)) return 'Shoot hours must be more than 0 and at most 4.'
   if (/shoot_days_split_check/.test(message)) return 'The second session must start after the first ends, and both together can be at most 4 hours.'
   if (/comments_body_check/.test(message)) return 'Write a comment of up to 2000 characters.'
@@ -80,6 +80,8 @@ function shootFields(fd: FormData) {
     videos_planned: Math.max(0, Math.floor(num(fd, 'videos_planned') || 0)),
     meeting_time: str(fd, 'meeting_time') || null,
     meeting_point: str(fd, 'meeting_point') || null,
+    meeting_url: cleanUrl(str(fd, 'meeting_url')),
+    meeting_instructions: str(fd, 'meeting_instructions') || null,
     location_name: str(fd, 'location_name') || null,
     location_address: str(fd, 'location_address') || null,
     location_url: cleanUrl(str(fd, 'location_url')),
