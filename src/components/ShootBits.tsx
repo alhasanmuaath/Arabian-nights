@@ -13,7 +13,7 @@ export function DateBlock({ date, size = 'md' }: { date: string; size?: 'md' | '
   const big = size === 'lg'
   return (
     <span
-      className={`flex shrink-0 flex-col items-center justify-center rounded-2xl border border-white/14 bg-white/8 ${
+      className={`leaf flex shrink-0 flex-col items-center justify-center rounded-2xl border border-white/14 bg-white/8 ${
         big ? 'h-[4.5rem] w-[4.5rem]' : 'h-14 w-14'
       }`}
     >
@@ -45,7 +45,7 @@ export function ShootRow({
 }) {
   const crew = crewOf(day, attendees, team)
   return (
-    <Link href={`/shoots/${day.id}`} className="row flex items-center gap-3 no-underline">
+    <Link href={`/shoots/${day.id}`} transitionTypes={['drill-in']} className="row flex items-center gap-3 no-underline">
       <DateBlock date={day.date} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

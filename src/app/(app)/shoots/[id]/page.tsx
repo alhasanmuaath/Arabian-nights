@@ -80,12 +80,12 @@ export default async function ShootPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <Link href="/shoots" className="link inline-flex items-center gap-1 text-sm">
+      <Link href="/shoots" transitionTypes={['drill-out']} className="link inline-flex items-center gap-1 text-sm">
         <Icon name="chevron" size={14} className="rotate-180" /> All shoot days
       </Link>
 
       {/* ---------- header ---------- */}
-      <section className="glass glass-hero glass-pad">
+      <section className="glass glass-hero glass-pad" data-tilt>
         <div className="flex items-start gap-4">
           <DateBlock date={day.date} size="lg" />
           <div className="min-w-0 flex-1">

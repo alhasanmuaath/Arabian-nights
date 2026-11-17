@@ -88,6 +88,7 @@ export default async function Shoots({ searchParams }: { searchParams: Promise<{
               <Link
                 key={d}
                 href={`/shoots/${here[0].id}`}
+                transitionTypes={['drill-in']}
                 aria-label={`${fmtDate(d)}: ${here.length} shoot day${here.length > 1 ? 's' : ''}${mine ? ', you are on the crew' : ''}`}
                 className={`${cls} no-underline hover:bg-white/16`}
               >

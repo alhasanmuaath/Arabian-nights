@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next'
+import { Motion } from '@/components/Motion'
+import { Sky } from '@/components/Sky'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -12,7 +14,11 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, them
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Sky />
+        <Motion />
+        {children}
+      </body>
     </html>
   )
 }

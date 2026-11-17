@@ -36,7 +36,7 @@ export function ProgressBar({
         aria-valuemax={target}
       >
         <div
-          className="h-full rounded-full"
+          className="bar-fill h-full rounded-full"
           style={{ width: `${pct}%`, background: 'linear-gradient(90deg, var(--color-violet), var(--color-gold-400))' }}
         />
       </div>
