@@ -30,10 +30,17 @@ People log in with **email and password**.
   and a new password.
 - **Change password:** Me → Change password.
 
-Supabase must send the right emails. In the Supabase dashboard, go to **Authentication → Emails → Templates** and
-paste `supabase/templates/invite.html` into **Invite user** and `supabase/templates/recovery.html` into
-**Reset password**, with the subjects given in `supabase/config.toml`. Also set **Authentication → Sign In / Providers →
-Email → Email OTP Expiration** to `86400` (24 hours), otherwise invitation links stop working after 1 hour.
+### Where the login emails come from
+
+The reset code and the invitation are sent **by the app itself** through your mailbox, so they always look the same
+(`src/lib/emails.ts`). Set these four variables in Vercel (Project → Settings → Environment Variables) and redeploy:
+`SMTP_HOST` (`mail.privateemail.com`), `SMTP_PORT` (`465`), `SMTP_USER` (the full mailbox address), `SMTP_PASS`
+(its password), and `SMTP_FROM` (for example `Arabian Nights <info@arabiannights.space>`).
+
+Without them the app falls back to Supabase's own emails. Then paste `supabase/templates/invite.html` into
+**Authentication → Emails → Templates → Invite user** and `supabase/templates/recovery.html` into **Reset password**.
+Either way set **Authentication → Sign In / Providers → Email → Email OTP Expiration** to `86400`, otherwise
+invitation links stop working after 1 hour. A reset code can be requested once a minute per person.
 
 ## Screens
 

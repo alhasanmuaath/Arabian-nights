@@ -144,6 +144,32 @@ async function openShoot(page, title) {
     await ctx.close()
   }
 
+  // ================= reset codes cannot be used to flood an inbox =================
+  {
+    const ctx = await phone(browser)
+    const page = await ctx.newPage()
+    const since = new Date(Date.now() - 2000)
+    for (let i = 0; i < 2; i++) {
+      await page.goto(BASE + '/forgot-password')
+      await page.fill('#email', 'hala@example.com')
+      await page.click('button:has-text("Send me a code")')
+      await page.waitForSelector('#code')
+    }
+    await page.goto(BASE + '/forgot-password')
+    await page.fill('#email', 'nobody@gmail.com')
+    await page.click('button:has-text("Send me a code")')
+    await page.waitForSelector('#code')
+    check('an address that is not on the team gets the same screen (does not reveal who is)', true)
+    await sleep(2000)
+    const count = async (who) =>
+      ((await (await fetch(`${MAIL}/search?query=${encodeURIComponent('to:' + who)}`)).json()).messages || []).filter(
+        (m) => new Date(m.Created) > since && m.Subject.includes('reset code'),
+      ).length
+    check('asking for a reset code twice in a row sends only one email', (await count('hala@example.com')) === 1, await count('hala@example.com'))
+    check('an address that is not on the team gets no email', (await count('nobody@gmail.com')) === 0)
+    await ctx.close()
+  }
+
   // ================= Sara (model): decline with a reason =================
   {
     const { ctx, page } = await login(browser, 'sara@example.com')

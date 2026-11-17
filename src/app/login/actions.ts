@@ -1,10 +1,9 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { createClient as createPublicClient } from '@supabase/supabase-js'
+import { sendResetCode } from '@/lib/auth-mail'
 import { checkPassword, passwordError } from '@/lib/password'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from '@/lib/supabase/env'
 import { createClient } from '@/lib/supabase/server'
 
 const clean = (v: FormDataEntryValue | null) => String(v ?? '').trim()
@@ -75,13 +74,8 @@ export async function forgotPassword(prev: ResetState, fd: FormData): Promise<Re
   if (!email.includes('@')) return { step: 'email', error: 'Enter a valid email address.' }
   await ensureLoginForTeamMember(email)
 
-  // A separate client with no cookies, so nothing about this visitor is stored.
-  const mailer = createPublicClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  const { error } = await mailer.auth.resetPasswordForEmail(email)
-  const tooSoon = error && (error.status === 429 || /security purposes|rate limit/i.test(error.message))
-  if (error && !tooSoon) return { step: 'email', email, error: 'Could not send the code. Please try again in a minute.' }
+  const result = await sendResetCode(email)
+  if (result === 'error') return { step: 'email', email, error: 'Could not send the code. Please try again in a minute.' }
 
   // Same answer whether or not the email is on the team: it does not reveal who is.
   return {

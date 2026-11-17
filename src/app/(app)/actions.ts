@@ -1,11 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { sendInvitation } from '@/lib/auth-mail'
+import { originFromHeaders } from '@/lib/origin'
 import { canEditAll, getMe } from '@/lib/session'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from '@/lib/supabase/env'
 import type { ActionState, TargetType } from '@/lib/types'
 
 // ---------- helpers ----------
@@ -541,26 +542,8 @@ export async function updatePay(_p: ActionState, fd: FormData): Promise<ActionSt
 // =====================================================================
 const ROLES = ['model', 'photographer', 'organizer', 'manager', 'member']
 
-/**
- * Emails an invitation. A new person gets a link that opens the page where
- * they choose their password. Someone who already has a login (for example
- * an older account that never set a password) gets a 6-digit reset code
- * instead, to use on the "Forgot password" page.
- */
 async function sendInvite(email: string): Promise<string> {
-  const admin = createAdminClient()
-  if (!admin) return ' (No secret key set, so no invitation email was sent.)'
-
-  const { error } = await admin.auth.admin.inviteUserByEmail(email)
-  if (!error) return ' Invitation email sent. It has a link where they choose their password.'
-
-  if (/already|registered|exists/i.test(error.message)) {
-    const mailer = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
-    const { error: resetError } = await mailer.auth.resetPasswordForEmail(email)
-    if (resetError && resetError.status !== 429) return ` They already have an account. Ask them to use "Forgot password" on the login page.`
-    return ' They already have an account, so we sent a 6-digit code. They enter it on the "Forgot password" page to choose a password.'
-  }
-  return ` Invitation failed: ${error.message}`
+  return sendInvitation(email, originFromHeaders(await headers()))
 }
 
 export async function invitePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
