@@ -53,12 +53,25 @@ export async function sendInvitation(email: string, origin: string): Promise<str
   const admin = createAdminClient()
   if (!admin) return ' (No secret key set, so no invitation email was sent.)'
 
+  // A person who already has a login (for example a second invitation) gets the
+  // same kind of email: a link to choose a new password, never a code.
   const existingAccount = async () => {
-    const r = await sendResetCode(email)
-    if (r === 'sent' || r === 'too-soon') {
-      return ' They already have an account, so we sent a 6-digit code. They enter it on the "Forgot password" page to choose a password.'
+    if (!mailConfigured()) {
+      const r = await sendResetCode(email)
+      return r === 'sent' || r === 'too-soon'
+        ? ' They already have an account, so we sent a password reset email.'
+        : ' They already have an account. Ask them to use "Forgot password" on the login page.'
     }
-    return ' They already have an account. Ask them to use "Forgot password" on the login page.'
+    const { data, error } = await admin.auth.admin.generateLink({ type: 'recovery', email })
+    if (error || !data?.properties?.hashed_token) return ' They already have an account. Ask them to use "Forgot password" on the login page.'
+    const link = `${origin}/auth/confirm?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=recovery`
+    try {
+      await sendMail(email, inviteEmail(link))
+    } catch (e) {
+      console.error('Invitation email failed:', describeMailError(e))
+      return ` The invitation email could not be sent (${describeMailError(e)}). Use "Email check" at the top of this page to see what is wrong.`
+    }
+    return ' They already had an account, so the email has a link where they choose a new password.'
   }
 
   if (!mailConfigured()) {

@@ -478,14 +478,14 @@ async function openShoot(page, title) {
     inviteLink = invite.HTML.match(/href="([^"]*auth\/confirm[^"]*)"/)[1].replace(/&amp;/g, '&')
     check('invitation email has a link to choose a password (no code)', /type=invite/.test(inviteLink) && !/\b\d{6}\b/.test(invite.Text.replace(/\d{4,}-\d+/g, '')), inviteLink)
 
-    // "Resend invitation" for someone who already has an account sends a reset code instead
+    // "Resend invitation" for someone who already has an account sends a link to choose a new password
     const saraRow = page.locator('li', { hasText: 'sara@example.com' }).first()
     await saraRow.locator('summary:has-text("Edit")').click()
     const resendAt = new Date(Date.now() - 2000)
     await saraRow.locator('button:has-text("Resend invitation")').click()
-    await saraRow.locator('[role=status]', { hasText: 'already have an account' }).waitFor()
-    const resent = await newMail('sara@example.com', resendAt, 'reset code')
-    check('resending to an existing account emails a 6-digit reset code', /\b\d{6}\b/.test(resent.Text))
+    await saraRow.locator('[role=status]', { hasText: 'already had an account' }).waitFor()
+    const resent = await newMail('sara@example.com', resendAt, 'choose your password')
+    check('resending to an existing account emails a link to choose a password, not a code', /auth\/confirm/.test(resent.HTML) && !/reset code/i.test(resent.Subject || ''))
 
     // "Email check": a test email goes to the manager and the page reports the mail server's answer
     const testAt = new Date(Date.now() - 2000)
