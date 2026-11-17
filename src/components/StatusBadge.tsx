@@ -1,25 +1,24 @@
+import type { CrewResponse, PayStatus, ShootStatus } from '@/lib/types'
 
-import type { AvailabilityStatus, PayStatus, ShootStatus } from '@/lib/types'
+type BadgeStatus = ShootStatus | PayStatus | CrewResponse
 
-type BadgeStatus = ShootStatus | PayStatus | AvailabilityStatus
-
-const styles: Record<BadgeStatus, string> = {
-  free: 'border-gray-300 text-gray-700',
-  offered: 'border-amber-500 text-amber-800',
-  confirmed: 'border-blue-600 text-blue-800',
-  completed: 'border-green-700 text-green-800',
-  paid: 'border-green-700 text-green-800',
-  not_paid: 'border-red-400 text-red-800',
-  pending: 'border-amber-500 text-amber-800',
-  approved: 'border-green-700 text-green-800',
-  rejected: 'border-red-400 text-red-800',
+const STYLE: Record<BadgeStatus, { cls: string; label: string }> = {
+  planned: { cls: 'chip-info', label: 'Planned' },
+  completed: { cls: 'chip-ok', label: 'Completed' },
+  cancelled: { cls: 'chip-no', label: 'Cancelled' },
+  paid: { cls: 'chip-ok', label: 'Paid' },
+  not_paid: { cls: 'chip-wait', label: 'Not paid' },
+  pending: { cls: 'chip-wait', label: 'No answer yet' },
+  accepted: { cls: 'chip-ok', label: 'Accepted' },
+  declined: { cls: 'chip-no', label: 'Declined' },
 }
 
-export function StatusBadge({ status }: { status: BadgeStatus }) {
+export function StatusBadge({ status, label }: { status: BadgeStatus; label?: string }) {
+  const s = STYLE[status]
   return (
-    <span className={`inline-block rounded border px-1.5 py-0.5 text-xs font-medium ${styles[status]}`}>
-      {status === 'not_paid' ? 'not paid' : status}
+    <span className={`chip ${s.cls}`}>
+      <span className="dot" aria-hidden="true" />
+      {label ?? s.label}
     </span>
   )
 }
-

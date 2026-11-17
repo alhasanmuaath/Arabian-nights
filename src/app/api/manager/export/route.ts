@@ -2,12 +2,13 @@
 import { getMe } from '../../../../lib/session'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
-type Row = Record<string, any>
+type Row = Record<string, unknown> & { id: string; person_id: string; shoot_day_id: string; date: string; title?: string | null; name?: string }
 
-async function fetchAll(supabase: any, table: string): Promise<Row[]> {
+async function fetchAll(supabase: SupabaseClient, table: string): Promise<Row[]> {
   const rows: Row[] = []
   const pageSize = 1000
 
@@ -51,45 +52,39 @@ export async function GET() {
   }
 
   try {
-    const [people, availability, shootDays, payments, targets] =
-      await Promise.all([
-        fetchAll(supabase, 'people'),
-        fetchAll(supabase, 'availability'),
-        fetchAll(supabase, 'shoot_days'),
-        fetchAll(supabase, 'pay'),
-        fetchAll(supabase, 'targets'),
-      ])
+    const [people, shootDays, attendees, payments, targets] = await Promise.all([
+      fetchAll(supabase, 'people'),
+      fetchAll(supabase, 'shoot_days'),
+      fetchAll(supabase, 'shoot_attendees'),
+      fetchAll(supabase, 'pay'),
+      fetchAll(supabase, 'targets'),
+    ])
 
-    const personNames = new Map(
-      people.map((person) => [person.id, person.name]),
-    )
+    const personNames = new Map(people.map((person) => [person.id, person.name]))
+    const dayLabels = new Map(shootDays.map((day) => [day.id, `${day.date}${day.title ? ' · ' + day.title : ''}`]))
 
-    const availabilityRows = availability.map((item) => ({
-      ...item,
-      person: personNames.get(item.person_id) ?? item.person_id,
-    }))
+    const shootDayRows = shootDays.map((day) => {
+      const rest = { ...day }
+      delete (rest as Partial<Row>).person_id // legacy column, replaced by the crew list
+      return rest
+    })
 
-    const approvedRows = availabilityRows.filter(
-  (item: Row) => item.status === 'approved',
-)
-
-    const shootDayRows = shootDays.map((day) => ({
-      ...day,
-      person: day.person_id
-        ? personNames.get(day.person_id) ?? day.person_id
-        : 'Unassigned',
+    const crewRows = attendees.map((a) => ({
+      ...a,
+      shoot_day: dayLabels.get(a.shoot_day_id) ?? a.shoot_day_id,
+      person: personNames.get(a.person_id) ?? a.person_id,
     }))
 
     const paymentRows = payments.map((payment) => ({
       ...payment,
+      shoot_day: dayLabels.get(payment.shoot_day_id) ?? payment.shoot_day_id,
       person: personNames.get(payment.person_id) ?? payment.person_id,
     }))
 
     const sections = [
       { name: 'People.xlsx', rows: people },
-      { name: 'Availability.xlsx', rows: availabilityRows },
-      { name: 'Approved-Schedule.xlsx', rows: approvedRows },
       { name: 'Shoot-Days.xlsx', rows: shootDayRows },
+      { name: 'Crew.xlsx', rows: crewRows },
       { name: 'Payments.xlsx', rows: paymentRows },
       { name: 'Settings.xlsx', rows: targets },
     ]

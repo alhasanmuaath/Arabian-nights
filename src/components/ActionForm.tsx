@@ -22,12 +22,12 @@ export function ActionForm({ action, children, className, resetOnSuccess }: Prop
     <form ref={ref} action={formAction} className={className}>
       {children}
       {state?.error && (
-        <p role="alert" className="mt-2 w-full text-sm text-red-700">
+        <p role="alert" className="msg-error mt-2 w-full">
           {state.error}
         </p>
       )}
       {state?.ok && (
-        <p role="status" className="mt-2 w-full text-sm text-green-800">
+        <p role="status" className="msg-ok mt-2 w-full">
           {state.ok}
         </p>
       )}
@@ -38,18 +38,16 @@ export function ActionForm({ action, children, className, resetOnSuccess }: Prop
 export function SubmitButton({
   children,
   variant = 'primary',
+  small,
 }: {
   children: React.ReactNode
   variant?: 'primary' | 'secondary' | 'danger'
+  small?: boolean
 }) {
   const { pending } = useFormStatus()
-  const styles = {
-    primary: 'bg-gray-900 text-white border-gray-900',
-    secondary: 'bg-white text-gray-900 border-gray-300',
-    danger: 'bg-white text-red-700 border-red-300',
-  }[variant]
+  const styles = { primary: 'btn-primary', secondary: '', danger: 'btn-danger' }[variant]
   return (
-    <button type="submit" disabled={pending} className={`btn ${styles} disabled:opacity-50`}>
+    <button type="submit" disabled={pending} className={`btn ${styles} ${small ? 'btn-sm' : ''}`}>
       {pending ? 'Saving…' : children}
     </button>
   )

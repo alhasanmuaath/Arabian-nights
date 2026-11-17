@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "bash tests/reset-local.sh && psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql",
+    "test:db": "psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql",
     "test:e2e": "bash tests/reset-local.sh && node tests/e2e.cjs",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
-    "add-manager": "node --env-file=.env.local scripts/add-manager.mjs"
+    "add-manager": "node --env-file=.env.local scripts/add-manager.mjs",
+    "test:migration": "bash tests/migration-test.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

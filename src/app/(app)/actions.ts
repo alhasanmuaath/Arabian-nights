@@ -1,23 +1,24 @@
 'use server'
 
-import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { getMe, canEditAll } from '@/lib/session'
-import { createClient } from '@supabase/supabase-js'
+import { redirect } from 'next/navigation'
+import { canEditAll, getMe } from '@/lib/session'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from '@/lib/supabase/env'
-import type { ActionState } from '@/lib/types'
+import type { ActionState, TargetType } from '@/lib/types'
 
 // ---------- helpers ----------
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim()
 const num = (fd: FormData, k: string) => Number(fd.get(k))
+const list = (fd: FormData, k: string) => [...new Set(fd.getAll(k).map(String).filter(Boolean))]
+const NO = "You don't have permission to do that."
 
 function friendly(message: string): string {
-  if (/row-level security|permission denied/i.test(message)) return "You don't have permission to do that."
+  if (/row-level security|permission denied/i.test(message)) return NO
   if (/people_email_key|duplicate key.*email/i.test(message)) return 'Someone with that email is already on the team.'
-  if (/shoot_days_one_per_person_per_date/.test(message)) return 'That person already has a shoot day on this date.'
-  if (/availability_check|end_time > start_time/.test(message)) return 'End time must be after start time.'
-  if (/hours_check/.test(message)) return 'Shoot day hours must be more than 0 and at most 4.';
+  if (/shoot_attendees_shoot_day_id_person_id_key/.test(message)) return 'That person is already on the crew list.'
+  if (/shoot_days_location_url_check/.test(message)) return 'The map link must start with https://'
+  if (/hours_check/.test(message)) return 'Shoot hours must be more than 0 and at most 4.'
+  if (/comments_body_check/.test(message)) return 'Write a comment of up to 2000 characters.'
   return message
 }
 
@@ -32,287 +33,422 @@ function done(ok: string): ActionState {
   return { ok }
 }
 
-// ---------- availability ----------
-
-export async function addAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const { supabase, me } = await session()
-
-  const person_id = str(fd, 'person_id') || me.id
-  const dates = fd.getAll('dates').map(String).filter(Boolean)
-
-  const start_time = str(fd, 'start_time')
-  const end_time = str(fd, 'end_time')
-  const second_start = str(fd, 'second_start')
-  const second_end = str(fd, 'second_end')
-
-  if (!dates.length) return { error: 'Pick at least one date.' }
-
-  if (!start_time || !end_time || end_time <= start_time) {
-    return { error: 'Enter a valid first time window.' }
-  }
-
-  if (Boolean(second_start) !== Boolean(second_end)) {
-    return { error: 'Complete both times for the second window.' }
-  }
-
-  if (second_start && second_end && second_end <= second_start) {
-    return { error: 'End time must be after the second start time.' }
-  }
-
-  if (second_start && second_start < end_time) {
-    return { error: 'The second window must start after the first window ends.' }
-  }
-
-  const windows = [
-    { start_time, end_time },
-    ...(second_start && second_end
-      ? [{ start_time: second_start, end_time: second_end }]
-      : []),
-  ]
-
-  const failed: string[] = []
-
-  for (const date of dates) {
-    for (const window of windows) {
-      const { error } = await supabase
-        .from('availability')
-        .insert({ person_id, date, ...window })
-
-      if (error) {
-        failed.push(`${date} (${window.start_time}–${window.end_time}): ${friendly(error.message)}`)
-        break
-      }
-    }
-  }
-
-  revalidatePath('/', 'layout')
-
-  const added = dates.length - new Set(failed.map((f) => f.split(' ')[0])).size
-
-  if (failed.length) {
-    return { error: `Added windows for ${added} of ${dates.length} dates. ${failed.join(' · ')}` }
-  }
-
-  return {
-    ok: `Added ${windows.length} window${windows.length === 1 ? '' : 's'} on ${dates.length} date${dates.length === 1 ? '' : 's'}.`,
-  }
+/** "maps.app.goo.gl/x" -> "https://maps.app.goo.gl/x"; empty -> null. */
+function cleanUrl(raw: string): string | null {
+  if (!raw) return null
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
 }
 
-
-
-
-export async function updateAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const { supabase } = await session()
-
-  const id = str(fd, 'id')
-  const date = str(fd, 'date')
-  const start_time = str(fd, 'start_time')
-  const end_time = str(fd, 'end_time')
-
-  if (!id || !date || !start_time || !end_time) {
-    return { error: 'Complete all availability fields.' }
-  }
-
-  if (end_time <= start_time) {
-    return { error: 'End time must be after start time.' }
-  }
-
-  const { data, error } = await supabase
-    .from('availability')
-    .update({ date, start_time, end_time })
-    .eq('id', id)
-    .select('id')
-
-  if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
-
-  revalidatePath('/', 'layout')
-  return done('Availability updated. It may require approval again.')
-}
-
-export async function deleteAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const { supabase } = await session()
-
-  const { data, error } = await supabase
-    .from('availability')
-    .delete()
-    .eq('id', str(fd, 'id'))
-    .select('id')
-
-  if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
-
-  revalidatePath('/', 'layout')
-  return done('Removed.')
-}
-
-export async function reviewAvailability(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const { supabase } = await session()
-
-  const id = str(fd, 'id')
-  const status = str(fd, 'status')
-
-  if (!id) return { error: 'Missing availability request.' }
-  if (status !== 'approved' && status !== 'rejected') {
-    return { error: 'Invalid review status.' }
-  }
-
-  const { error } = await supabase.rpc('set_availability_status', {
-    request_id: id,
-    requested_status: status,
-  })
-
-  if (error) return { error: friendly(error.message) }
-
-  return done(status === 'approved' ? 'Availability approved.' : 'Availability rejected.')
-}
-
-// ---------- model answers an offered day ----------
-export async function respondToShootDay(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const { supabase } = await session()
-  const accept = str(fd, 'accept') === 'yes'
-  const { error } = await supabase.rpc('respond_to_shoot_day', { day_id: str(fd, 'id'), accept })
-  if (error) return { error: friendly(error.message) }
-  return done(accept ? 'Confirmed. See you there.' : 'Declined.')
-}
-
-// ---------- shoot days (manager / edit members) ----------
-function shootDayFields(fd: FormData) {
+// =====================================================================
+// SHOOT DAYS (manager)
+// =====================================================================
+function shootFields(fd: FormData) {
   return {
     date: str(fd, 'date'),
+    title: str(fd, 'title') || null,
     start_time: str(fd, 'start_time') || null,
     hours: num(fd, 'hours') || 4,
-    person_id: str(fd, 'person_id') || null,
     videos_planned: Math.max(0, Math.floor(num(fd, 'videos_planned') || 0)),
-    status: str(fd, 'status') || 'free',
+    meeting_time: str(fd, 'meeting_time') || null,
+    meeting_point: str(fd, 'meeting_point') || null,
+    location_name: str(fd, 'location_name') || null,
+    location_address: str(fd, 'location_address') || null,
+    location_url: cleanUrl(str(fd, 'location_url')),
     notes: str(fd, 'notes') || null,
   }
 }
 
-export async function createShootDay(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function createShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
-  const fields = shootDayFields(fd)
+  const fields = shootFields(fd)
   if (!fields.date) return { error: 'Pick a date.' }
-  const { error } = await supabase.from('shoot_days').insert(fields)
+
+  const { data: day, error } = await supabase.from('shoot_days').insert(fields).select('id').single()
   if (error) return { error: friendly(error.message) }
-  return done('Shoot day added.')
+
+  const crew = list(fd, 'person_ids')
+  if (crew.length) {
+    const { error: crewError } = await supabase
+      .from('shoot_attendees')
+      .insert(crew.map((person_id) => ({ shoot_day_id: day.id, person_id })))
+    if (crewError) {
+      revalidatePath('/', 'layout')
+      return { error: `Shoot day created, but the crew was not added: ${friendly(crewError.message)}` }
+    }
+  }
+  revalidatePath('/', 'layout')
+  redirect(`/shoots/${day.id}`)
 }
 
-export async function updateShootDay(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function updateShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
-  const { data, error } = await supabase.from('shoot_days').update(shootDayFields(fd)).eq('id', str(fd, 'id')).select('id')
+  const status = str(fd, 'status')
+  const patch = { ...shootFields(fd), ...(status ? { status } : {}) }
+  const { data, error } = await supabase.from('shoot_days').update(patch).eq('id', str(fd, 'id')).select('id')
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+  if (!data?.length) return { error: NO }
   return done('Saved.')
 }
 
-export async function deleteShootDay(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function setShootStatus(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
-  const { data, error } = await supabase.from('shoot_days').delete().eq('id', str(fd, 'id')).select('id')
+  const status = str(fd, 'status')
+  const { data, error } = await supabase.from('shoot_days').update({ status }).eq('id', str(fd, 'id')).select('id')
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
-  return done('Shoot day deleted.')
+  if (!data?.length) return { error: NO }
+  return done(
+    status === 'completed'
+      ? 'Marked completed. Payments were added to Pay.'
+      : status === 'cancelled'
+        ? 'Shoot day cancelled. The crew was told.'
+        : 'Shoot day is planned again.',
+  )
 }
-// ---------- photographer assignments (manager only) ----------
 
-export async function assignPhotographer(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function deleteShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
+  if (!canEditAll(me)) return { error: NO }
+  const id = str(fd, 'id')
 
-  if (me.role !== 'manager') {
-    return { error: 'Only the manager can assign photographers.' }
-  }
+  const { data: assets } = await supabase.from('shoot_assets').select('storage_path').eq('shoot_day_id', id)
+  const { data, error } = await supabase.from('shoot_days').delete().eq('id', id).select('id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
 
+  const paths = (assets ?? []).map((a) => a.storage_path).filter((p): p is string => Boolean(p))
+  if (paths.length) await supabase.storage.from('shoot-assets').remove(paths)
+
+  revalidatePath('/', 'layout')
+  redirect('/shoots')
+}
+
+/** Organizers and the manager: where the shoot happens. */
+export async function setLocation(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const { error } = await supabase.rpc('set_shoot_location', {
+    day_id: str(fd, 'id'),
+    loc_name: str(fd, 'location_name') || null,
+    loc_address: str(fd, 'location_address') || null,
+    loc_url: cleanUrl(str(fd, 'location_url')),
+  })
+  if (error) return { error: friendly(error.message) }
+  return done('Location saved.')
+}
+
+// =====================================================================
+// CREW
+// =====================================================================
+export async function addCrew(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
   const shoot_day_id = str(fd, 'shoot_day_id')
-  const photographer_id = str(fd, 'photographer_id')
-  const agreed_amount = num(fd, 'agreed_amount')
-
-  if (!shoot_day_id || !photographer_id) {
-    return { error: 'Select a shoot and a photographer.' }
-  }
-
-  if (!Number.isFinite(agreed_amount) || agreed_amount < 0) {
-    return { error: 'Enter a valid agreed payment amount.' }
-  }
-
-  const { data: photographer, error: personError } = await supabase
-    .from('people')
-    .select('id')
-    .eq('id', photographer_id)
-    .eq('role', 'photographer')
-    .maybeSingle()
-
-  if (personError) return { error: friendly(personError.message) }
-  if (!photographer) return { error: 'The selected person is not a photographer.' }
-
+  const crew = list(fd, 'person_ids')
+  if (!crew.length) return { error: 'Pick at least one person.' }
   const { error } = await supabase
-    .from('shoot_photographers')
-    .insert({
-      shoot_day_id,
-      photographer_id,
-      agreed_amount,
+    .from('shoot_attendees')
+    .upsert(crew.map((person_id) => ({ shoot_day_id, person_id })), {
+      onConflict: 'shoot_day_id,person_id',
+      ignoreDuplicates: true,
     })
+  if (error) return { error: friendly(error.message) }
+  return done(`Added ${crew.length} ${crew.length === 1 ? 'person' : 'people'}. They were asked to accept.`)
+}
+
+export async function removeCrew(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const { data, error } = await supabase.from('shoot_attendees').delete().eq('id', str(fd, 'id')).select('id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  return done('Removed from this shoot day.')
+}
+
+/** Manager override, e.g. someone confirmed by phone. */
+export async function setCrewResponse(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const response = str(fd, 'response')
+  const { data, error } = await supabase
+    .from('shoot_attendees')
+    .update({ response, responded_at: response === 'pending' ? null : new Date().toISOString() })
+    .eq('id', str(fd, 'id'))
+    .select('id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  return done('Saved.')
+}
+
+/** Agreed fee for one person on one day. Empty = default (day rate for models). */
+export async function setFee(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const shoot_day_id = str(fd, 'shoot_day_id')
+  const person_id = str(fd, 'person_id')
+  const raw = str(fd, 'amount')
+
+  if (raw === '') {
+    const { error } = await supabase.from('shoot_fees').delete().eq('shoot_day_id', shoot_day_id).eq('person_id', person_id)
+    if (error) return { error: friendly(error.message) }
+    return done('Fee cleared.')
+  }
+  const amount = Number(raw)
+  if (!Number.isFinite(amount) || amount < 0) return { error: 'Enter a valid amount.' }
+  const { data, error } = await supabase
+    .from('shoot_fees')
+    .upsert({ shoot_day_id, person_id, amount, updated_at: new Date().toISOString() })
+    .select('person_id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  return done('Fee saved.')
+}
+
+/** A crew member accepts, or declines with a reason. */
+export async function respondToShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const accept = str(fd, 'accept') === 'yes'
+  const reason = str(fd, 'reason')
+  if (!accept && reason.length < 3) return { error: 'Please write a short reason so the manager can plan.' }
+  const { error } = await supabase.rpc('respond_to_shoot', { day_id: str(fd, 'id'), accept, reason: reason || null })
+  if (error) return { error: friendly(error.message) }
+  return done(accept ? 'Accepted. See you there.' : 'Declined. The manager was told.')
+}
+
+// =====================================================================
+// PLACE PHOTOS + SCRIPTS
+// =====================================================================
+const ASSET_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]
+
+/** Called by the browser after it has uploaded a file straight to storage. */
+export async function registerAsset(input: {
+  shoot_day_id: string
+  kind: 'photo' | 'script'
+  title: string
+  storage_path: string
+  mime_type: string
+  size_bytes: number
+}): Promise<ActionState> {
+  const { supabase, me } = await session()
+  const title = input.title.trim().slice(0, 150) || (input.kind === 'photo' ? 'Photo' : 'Script')
+  const bad =
+    !input.storage_path.startsWith(`${input.shoot_day_id}/`) ||
+    !ASSET_TYPES.includes(input.mime_type) ||
+    (input.kind === 'photo' && !input.mime_type.startsWith('image/'))
+
+  const { error } = bad
+    ? { error: { message: 'That file type is not allowed here.' } }
+    : await supabase.from('shoot_assets').insert({
+        shoot_day_id: input.shoot_day_id,
+        kind: input.kind,
+        title,
+        storage_path: input.storage_path,
+        mime_type: input.mime_type,
+        size_bytes: input.size_bytes,
+        uploaded_by: me.id,
+      })
 
   if (error) {
-    if (error.code === '23505') {
-      return { error: 'This photographer is already assigned to this shoot.' }
-    }
+    await supabase.storage.from('shoot-assets').remove([input.storage_path])
     return { error: friendly(error.message) }
   }
-
   revalidatePath('/', 'layout')
-  return done('Photographer assigned.')
+  return { ok: 'Uploaded.' }
 }
 
-export async function updatePhotographerAgreement(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function addTextScript(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
-
-  if (me.role !== 'manager') {
-    return { error: 'Only the manager can change photographer payments.' }
-  }
-
-  const id = str(fd, 'id')
-  const agreed_amount = num(fd, 'agreed_amount')
-
-  if (!id || !Number.isFinite(agreed_amount) || agreed_amount < 0) {
-    return { error: 'Enter a valid agreed payment amount.' }
-  }
-
-  const { data, error } = await supabase
-    .from('shoot_photographers')
-    .update({ agreed_amount })
-    .eq('id', id)
-    .select('id')
-
+  const title = str(fd, 'title')
+  const body = str(fd, 'body')
+  if (!title || !body) return { error: 'Enter a title and the script text.' }
+  const { error } = await supabase
+    .from('shoot_assets')
+    .insert({ shoot_day_id: str(fd, 'shoot_day_id'), kind: 'script', title, body, uploaded_by: me.id })
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to update this assignment." }
-
-  revalidatePath('/', 'layout')
-  return done('Agreed payment updated.')
+  return done('Script added. The crew was told.')
 }
 
-export async function removePhotographerAssignment(_p: ActionState, fd: FormData): Promise<ActionState> {
+export async function deleteAsset(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const { data, error } = await supabase.from('shoot_assets').delete().eq('id', str(fd, 'id')).select('storage_path')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  if (data[0].storage_path) await supabase.storage.from('shoot-assets').remove([data[0].storage_path])
+  return done('Removed.')
+}
+
+// =====================================================================
+// COMMENTS + REVIEWED
+// =====================================================================
+const TARGETS: TargetType[] = ['announcement', 'file', 'asset']
+
+export async function addComment(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
+  const target_type = str(fd, 'type') as TargetType
+  const body = str(fd, 'body')
+  if (!TARGETS.includes(target_type)) return { error: 'Unknown item.' }
+  if (!body) return { error: 'Write a comment first.' }
+  const { error } = await supabase
+    .from('comments')
+    .insert({ target_type, target_id: str(fd, 'id'), person_id: me.id, body })
+  if (error) return { error: friendly(error.message) }
+  return done('Comment posted.')
+}
 
-  if (me.role !== 'manager') {
-    return { error: 'Only the manager can remove photographer assignments.' }
-  }
+export async function deleteComment(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const { data, error } = await supabase.from('comments').delete().eq('id', str(fd, 'id')).select('id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  return done('Comment deleted.')
+}
 
-  const id = str(fd, 'id')
-  if (!id) return { error: 'Missing photographer assignment.' }
+export async function toggleReview(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+  const target_type = str(fd, 'type') as TargetType
+  const target_id = str(fd, 'id')
+  if (!TARGETS.includes(target_type)) return { error: 'Unknown item.' }
 
-  const { data, error } = await supabase
-    .from('shoot_photographers')
+  const { data: removed, error: delError } = await supabase
+    .from('reviews')
     .delete()
-    .eq('id', id)
-    .select('id')
+    .eq('target_type', target_type)
+    .eq('target_id', target_id)
+    .eq('person_id', me.id)
+    .select('person_id')
+  if (delError) return { error: friendly(delError.message) }
+  if (removed?.length) return done('Review mark removed.')
 
+  const { error } = await supabase.from('reviews').insert({ target_type, target_id, person_id: me.id })
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to remove this assignment." }
-
-  revalidatePath('/', 'layout')
-  return done('Photographer removed from this shoot.')
+  return done('Marked as reviewed.')
 }
-// ---------- targets & pay (manager) ----------
+
+// =====================================================================
+// ANNOUNCEMENTS + SHARED FILES (manager)
+// =====================================================================
+/** Who an announcement or file is assigned to: everyone, or the ticked people. */
+async function audience(
+  supabase: Awaited<ReturnType<typeof session>>['supabase'],
+  meId: string,
+  everyone: boolean,
+  picked: string[],
+): Promise<string[]> {
+  const { data } = await supabase.from('people').select('id')
+  const all = (data ?? []).map((p) => p.id as string).filter((id) => id !== meId)
+  return everyone ? all : picked.filter((id) => all.includes(id))
+}
+
+export async function createAnnouncement(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+  if (!canEditAll(me)) return { error: NO }
+
+  const title = str(fd, 'title')
+  const body = str(fd, 'body')
+  if (!title || !body) return { error: 'Enter a title and a message.' }
+
+  const recipients = await audience(supabase, me.id, str(fd, 'everyone') === 'yes', list(fd, 'person_ids'))
+  if (!recipients.length) return { error: 'Choose who this is for: everyone, or tick at least one person.' }
+
+  const { data: row, error } = await supabase
+    .from('announcements')
+    .insert({ title, body, created_by: me.id })
+    .select('id')
+    .single()
+  if (error) return { error: friendly(error.message) }
+
+  const { error: recipientError } = await supabase
+    .from('announcement_recipients')
+    .insert(recipients.map((person_id) => ({ announcement_id: row.id, person_id })))
+  if (recipientError) {
+    await supabase.from('announcements').delete().eq('id', row.id)
+    return { error: friendly(recipientError.message) }
+  }
+  return done(`Published to ${recipients.length} ${recipients.length === 1 ? 'person' : 'people'}.`)
+}
+
+export async function deleteAnnouncement(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase } = await session()
+  const { data, error } = await supabase.from('announcements').delete().eq('id', str(fd, 'id')).select('id')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: NO }
+  return done('Announcement deleted.')
+}
+
+const FILE_TYPES = [
+  ...ASSET_TYPES,
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]
+
+/** Step 1 of sharing a file: reserve a record and a storage path. */
+export async function createSharedFile(input: {
+  name: string
+  mime_type: string
+  size_bytes: number
+  description: string
+}): Promise<{ id: string; path: string } | { error: string }> {
+  const { supabase, me } = await session()
+  if (!canEditAll(me)) return { error: NO }
+  if (!FILE_TYPES.includes(input.mime_type)) {
+    return { error: 'Allowed: PDF, Word, Excel, PowerPoint, text and images.' }
+  }
+  if (input.size_bytes > 15 * 1024 * 1024) return { error: 'The maximum file size is 15 MB.' }
+
+  const id = crypto.randomUUID()
+  const safeName = input.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'document'
+  const path = `${id}/${safeName}`
+  const { error } = await supabase.from('shared_files').insert({
+    id,
+    name: input.name.slice(0, 200),
+    description: input.description.trim().slice(0, 500) || null,
+    storage_path: path,
+    mime_type: input.mime_type,
+    size_bytes: input.size_bytes,
+    uploaded_by: me.id,
+  })
+  if (error) return { error: friendly(error.message) }
+  return { id, path }
+}
+
+/** Step 2 (after the browser uploaded the file): assign it to people. */
+export async function shareFile(input: { id: string; everyone: boolean; person_ids: string[] }): Promise<ActionState> {
+  const { supabase, me } = await session()
+  if (!canEditAll(me)) return { error: NO }
+  const recipients = await audience(supabase, me.id, input.everyone, input.person_ids)
+  if (recipients.length) {
+    const { error } = await supabase
+      .from('shared_file_recipients')
+      .insert(recipients.map((person_id) => ({ file_id: input.id, person_id })))
+    if (error) return { error: friendly(error.message) }
+  }
+  revalidatePath('/', 'layout')
+  return { ok: `File shared with ${recipients.length} ${recipients.length === 1 ? 'person' : 'people'}.` }
+}
+
+/** Undo step 1 when the upload itself failed. */
+export async function discardSharedFile(id: string): Promise<void> {
+  const { supabase } = await session()
+  await supabase.from('shared_files').delete().eq('id', id)
+}
+
+export async function deleteSharedFile(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const { supabase, me } = await session()
+  if (!canEditAll(me)) return { error: NO }
+  const { data, error } = await supabase.from('shared_files').delete().eq('id', str(fd, 'id')).select('storage_path')
+  if (error) return { error: friendly(error.message) }
+  if (!data?.length) return { error: 'File not found or permission denied.' }
+  if (data[0].storage_path) await supabase.storage.from('shared-files').remove([data[0].storage_path])
+  return done('File deleted.')
+}
+
+// =====================================================================
+// TARGETS + PAY (manager)
+// =====================================================================
 export async function updateTargets(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
   const { data, error } = await supabase
@@ -326,8 +462,10 @@ export async function updateTargets(_p: ActionState, fd: FormData): Promise<Acti
     })
     .eq('id', 1)
     .select('id')
-  if (error) return { error: /target_days_max/.test(error.message) ? 'Max days must be at least min days.' : friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+  if (error) {
+    return { error: /targets_check/.test(error.message) ? 'Max days must be at least min days.' : friendly(error.message) }
+  }
+  if (!data?.length) return { error: NO }
   return done('Targets saved.')
 }
 
@@ -341,22 +479,17 @@ export async function updateDayRate(_p: ActionState, fd: FormData): Promise<Acti
     .eq('id', 1)
     .select('id')
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+  if (!data?.length) return { error: NO }
+
   if (fd.get('apply_unpaid')) {
+    const { data: models } = await supabase.from('people').select('id').eq('role', 'model')
     const { error: e2 } = await supabase
-  .from('pay')
-  .update({ amount: day_rate })
-  .eq('status', 'not_paid')
-  .in(
-    'person_id',
-    (await supabase
-      .from('people')
-      .select('id')
-      .eq('role', 'model')
-    ).data?.map((person) => person.id) ?? []
-  )
+      .from('pay')
+      .update({ amount: day_rate })
+      .eq('status', 'not_paid')
+      .in('person_id', (models ?? []).map((p) => p.id))
     if (e2) return { error: friendly(e2.message) }
-    return done('Day rate saved and applied to all unpaid days.')
+    return done('Day rate saved and applied to unpaid model days.')
   }
   return done('Day rate saved. It applies to days completed from now on.')
 }
@@ -368,65 +501,41 @@ export async function updatePay(_p: ActionState, fd: FormData): Promise<ActionSt
   if (fd.has('status')) patch.status = str(fd, 'status')
   const { data, error } = await supabase.from('pay').update(patch).eq('id', str(fd, 'id')).select('id')
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+  if (!data?.length) return { error: NO }
   return done(patch.status === 'paid' ? 'Marked paid.' : patch.status === 'not_paid' ? 'Marked not paid.' : 'Saved.')
 }
 
-// ---------- people (manager) ----------
+// =====================================================================
+// PEOPLE (manager)
+// =====================================================================
+const ROLES = ['model', 'photographer', 'organizer', 'manager', 'member']
 
 async function sendInvite(email: string): Promise<string> {
   const admin = createAdminClient()
-
-  if (!admin) {
-    return ' (No secret key set, so no invitation email was sent.)'
-  }
-
+  if (!admin) return ' (No secret key set, so no invitation email was sent.)'
   const { error } = await admin.auth.admin.inviteUserByEmail(email, {
     redirectTo: 'https://www.arabiannights.space/auth/confirm',
   })
-
   if (error) {
+    if (/already|registered|exists/i.test(error.message)) return ' They already have a login and can sign in now.'
     return ` Invitation failed: ${error.message}`
   }
-
   return ' Invitation email sent.'
 }
 
-
 export async function invitePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
-
-  if (me.role !== 'manager') {
-    return { error: 'Only the manager can invite people.' }
-  }
+  if (me.role !== 'manager') return { error: 'Only the manager can invite people.' }
 
   const email = str(fd, 'email').toLowerCase()
   const name = str(fd, 'name')
   const role = str(fd, 'role')
-  const access = str(fd, 'access') || 'view'
+  if (!name || !email.includes('@')) return { error: 'Enter a name and a valid email.' }
+  if (!ROLES.includes(role)) return { error: 'Invalid role selected.' }
 
-  const allowedRoles = ['model', 'photographer', 'member', 'manager']
-
-  if (!name || !email.includes('@')) {
-    return { error: 'Enter a name and a valid email.' }
-  }
-
-  if (!allowedRoles.includes(role)) {
-    return { error: 'Invalid role selected.' }
-  }
-
-  if (!['view', 'edit'].includes(access)) {
-    return { error: 'Invalid access level.' }
-  }
-
-  const { error } = await supabase
-    .from('people')
-    .insert({ name, email, role, access })
-
+  const { error } = await supabase.from('people').insert({ name, email, role })
   if (error) return { error: friendly(error.message) }
-
-  const note = await sendInvite(email)
-  return done(`${name} added.${note}`)
+  return done(`${name} added.${await sendInvite(email)}`)
 }
 
 export async function resendInvite(_p: ActionState, fd: FormData): Promise<ActionState> {
@@ -437,46 +546,18 @@ export async function resendInvite(_p: ActionState, fd: FormData): Promise<Actio
 
 export async function updatePerson(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase, me } = await session()
-
-  if (me.role !== 'manager') {
-    return { error: 'Only the manager can update team members.' }
-  }
+  if (me.role !== 'manager') return { error: 'Only the manager can update team members.' }
 
   const id = str(fd, 'id')
   const role = str(fd, 'role')
   const name = str(fd, 'name')
-  const access = str(fd, 'access') || 'view'
+  if (!id || !name) return { error: 'Enter a name.' }
+  if (!ROLES.includes(role)) return { error: 'Invalid role selected.' }
+  if (id === me.id && role !== 'manager') return { error: "You can't remove your own manager role." }
 
-  const allowedRoles = ['model', 'photographer', 'member', 'manager']
-
-  if (!id || !name) {
-    return { error: 'Enter a name.' }
-  }
-
-  if (!allowedRoles.includes(role)) {
-    return { error: 'Invalid role selected.' }
-  }
-
-  if (!['view', 'edit'].includes(access)) {
-    return { error: 'Invalid access level.' }
-  }
-
-  if (id === me.id && role !== 'manager') {
-    return { error: "You can't remove your own manager role." }
-  }
-
-  const { data, error } = await supabase
-    .from('people')
-    .update({ name, role, access })
-    .eq('id', id)
-    .select('id')
-
+  const { data, error } = await supabase.from('people').update({ name, role }).eq('id', id).select('id')
   if (error) return { error: friendly(error.message) }
-
-  if (!data?.length) {
-    return { error: "You don't have permission to do that." }
-  }
-
+  if (!data?.length) return { error: NO }
   return done('Saved.')
 }
 
@@ -486,310 +567,25 @@ export async function removePerson(_p: ActionState, fd: FormData): Promise<Actio
   if (id === me.id) return { error: "You can't remove yourself." }
   const { data, error } = await supabase.from('people').delete().eq('id', id).select('user_id')
   if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: "You don't have permission to do that." }
+  if (!data?.length) return { error: NO }
   // also delete their login so they can't sign in again
   const userId = data[0].user_id as string | null
   const admin = createAdminClient()
   if (userId && admin) await admin.auth.admin.deleteUser(userId)
   return done('Removed from the team.')
 }
+
+// =====================================================================
+// NOTIFICATIONS
+// =====================================================================
 export async function markNotificationRead(id: string) {
-  const { supabase } = await session()
-  const { error } = await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
+  const { supabase, me } = await session()
+  await supabase.from('notifications').update({ is_read: true }).eq('id', id).eq('person_id', me.id)
   revalidatePath('/', 'layout')
 }
 
-// ---------- announcements (manager / edit members) ----------
-export async function createAnnouncement(
-  _p: ActionState,
-  fd: FormData,
-): Promise<ActionState> {
+export async function markAllNotificationsRead() {
   const { supabase, me } = await session()
-
-  const canManage =
-    me.role === 'manager' || (me.role === 'member' && me.access === 'edit')
-
-  if (!canManage) return { error: "You don't have permission to publish announcements." }
-
-  const title = str(fd, 'title')
-  const body = str(fd, 'body')
-  const allModels = str(fd, 'all_models') === 'yes'
-  const selectedIds = [...new Set(fd.getAll('person_ids').map(String).filter(Boolean))]
-
-  if (!title || !body) return { error: 'Enter an announcement title and message.' }
-
-  let recipientIds = selectedIds
-
-if (allModels) {
-  const { data, error } = await supabase
-    .from('people')
-    .select('id')
-    .eq('role', 'model')
-
-  if (error) return { error: friendly(error.message) }
-  recipientIds = (data ?? []).map((person) => person.id)
-} else if (recipientIds.length) {
-  const { data, error } = await supabase
-    .from('people')
-    .select('id')
-    .eq('role', 'model')
-    .in('id', recipientIds)
-
-  if (error) return { error: friendly(error.message) }
-
-  if ((data ?? []).length !== recipientIds.length) {
-    return { error: 'One or more selected recipients are invalid.' }
-  }
-} if (recipientIds.length) {
-    const { data, error } = await supabase
-      .from('people')
-      .select('id')
-      .eq('role', 'model')
-      .in('id', recipientIds)
-
-    if (error) {
-  return { error: `Step B - Validate selected models: ${error.message}` }
-}
-  }
-
-  if (!recipientIds.length) {
-    return { error: 'Select at least one model or choose all models.' }
-  }
-
-  const { data: announcement, error } = await supabase
-    .from('announcements')
-    .insert({ title, body, created_by: me.id })
-    .select('id')
-    .single()
-
-  if (error) return { error: friendly(error.message) }
-
-  const { error: recipientError } = await supabase
-    .from('announcement_recipients')
-    .insert(recipientIds.map((person_id) => ({
-      announcement_id: announcement.id,
-      person_id,
-    })))
-
-  if (recipientError) {
-    await supabase.from('announcements').delete().eq('id', announcement.id)
-    return { error: friendly(recipientError.message) }
-  }
-
+  await supabase.from('notifications').update({ is_read: true }).eq('person_id', me.id).eq('is_read', false)
   revalidatePath('/', 'layout')
-  return { ok: `Announcement published to ${recipientIds.length} model${recipientIds.length === 1 ? '' : 's'}.` }
-}
-
-export async function deleteAnnouncement(
-  _p: ActionState,
-  fd: FormData,
-): Promise<ActionState> {
-  const { supabase, me } = await session()
-
-  const canManage =
-    me.role === 'manager' || (me.role === 'member' && me.access === 'edit')
-
-  if (!canManage) return { error: "You don't have permission to delete announcements." }
-
-  const id = str(fd, 'id')
-  if (!id) return { error: 'Missing announcement.' }
-
-  const { data, error } = await supabase
-    .from('announcements')
-    .delete()
-    .eq('id', id)
-    .select('id')
-
-  if (error) return { error: friendly(error.message) }
-  if (!data?.length) return { error: 'Announcement not found or permission denied.' }
-
-  return done('Announcement deleted.')
-}
-
-// ---------- shared files (manager / edit members) ----------
-
-
-  export async function uploadSharedFile(
-  _p: ActionState,
-  fd: FormData,
-): Promise<ActionState> {
-  const { supabase, me } = await session()
-
-  if (!canEditAll(me)) {
-    return { error: "You don't have permission to upload files." }
-  }
-
-  const file = fd.get('file')
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: 'Choose a file to upload.' }
-  }
-
-  const allowedTypes = [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  ]
-
-  if (!allowedTypes.includes(file.type)) {
-    return { error: 'Only PDF, Word, Excel, and PowerPoint documents are allowed.' }
-  }
-
-  if (file.size > 15 * 1024 * 1024) {
-    return { error: 'The maximum file size is 15 MB.' }
-  }
-
-  const allModels = str(fd, 'all_models') === 'yes'
-  const selectedIds = [...new Set(fd.getAll('person_ids').map(String).filter(Boolean))]
-
-  let recipientIds = selectedIds
-
-  if (allModels) {
-    const { data, error } = await supabase
-      .from('people')
-      .select('id')
-      .eq('role', 'model')
-
-    if (error) {
-      return { error: `Step A - Load all models: ${error.message}` }
-    }
-
-    recipientIds = (data ?? []).map((person) => person.id)
-  } else if (recipientIds.length) {
-    const { data, error } = await supabase
-      .from('people')
-      .select('id')
-      .eq('role', 'model')
-      .in('id', recipientIds)
-
-    if (error) {
-      return { error: `Step B - Validate selected models: ${error.message}` }
-    }
-
-    if ((data ?? []).length !== recipientIds.length) {
-      return { error: 'One or more selected recipients are invalid.' }
-    }
-  }
-
-  if (!recipientIds.length) {
-    return { error: 'Select at least one model or choose all models.' }
-  }
-
-  const safeName = file.name
-    .replace(/[\\/]/g, '_')
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-    .slice(-120) || 'document'
-
-  const { data: record, error: recordError } = await supabase
-    .from('shared_files')
-    .insert({
-      name: file.name,
-      description: str(fd, 'description') || null,
-      storage_path: '',
-      mime_type: file.type,
-      size_bytes: file.size,
-      uploaded_by: me.id,
-    })
-    .select('id')
-    .single()
-
-  if (recordError) {
-    return { error: `Step 1 - Create file record: ${recordError.message}` }
-  }
-
-  const storagePath = `${record.id}/${safeName}`
-
-  const { error: updateError } = await supabase
-    .from('shared_files')
-    .update({ storage_path: storagePath })
-    .eq('id', record.id)
-
-  if (updateError) {
-    await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: `Step 2 - Update storage path: ${updateError.message}` }
-  }
-
-  const { error: uploadError } = await supabase.storage
-    .from('shared-files')
-    .upload(storagePath, file, {
-      contentType: file.type,
-      upsert: false,
-    })
-
-  if (uploadError) {
-    await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: `Step 3 - Upload to Storage: ${uploadError.message}` }
-  }
-
-  const { error: recipientError } = await supabase
-    .from('shared_file_recipients')
-    .insert(
-      recipientIds.map((person_id) => ({
-        file_id: record.id,
-        person_id,
-      })),
-    )
-
-  if (recipientError) {
-    await supabase.storage.from('shared-files').remove([storagePath])
-    await supabase.from('shared_files').delete().eq('id', record.id)
-    return { error: `Step 4 - Add recipients: ${recipientError.message}` }
-  }
-
-  revalidatePath('/', 'layout')
-  return {
-    ok: `File shared with ${recipientIds.length} model${recipientIds.length === 1 ? '' : 's'}.`,
-  }
-}
-
-export async function deleteSharedFile(
-  _p: ActionState,
-  fd: FormData,
-): Promise<ActionState> {
-  const { supabase, me } = await session()
-
-  if (!canEditAll(me)) {
-    return { error: "You don't have permission to delete files." }
-  }
-
-  const id = str(fd, 'id')
-  if (!id) return { error: 'Missing file.' }
-
-  const { data: file, error: findError } = await supabase
-    .from('shared_files')
-    .select('id, storage_path')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (findError) return { error: friendly(findError.message) }
-  if (!file) return { error: 'File not found or permission denied.' }
-
-  const { error: storageError } = await supabase.storage
-    .from('shared-files')
-    .remove([file.storage_path])
-
-  if (storageError) return { error: friendly(storageError.message) }
-
-  const { data, error } = await supabase
-    .from('shared_files')
-    .delete()
-    .eq('id', id)
-    .select('id')
-
-    if (error) return { error: friendly(error.message) }
-
-  if (!data?.length) {
-    return { error: 'File not found or permission denied.' }
-  }
-
-  revalidatePath('/', 'layout')
-  return { ok: 'File deleted.' }
 }

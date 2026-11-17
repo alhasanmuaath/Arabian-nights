@@ -12,13 +12,17 @@ export function LoginForm() {
 
   if (!onCodeStep) {
     return (
-      <form action={emailAction} className="space-y-3">
+      <form action={emailAction} className="space-y-4">
         <div>
           <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" autoComplete="email" required defaultValue={email} />
+          <input id="email" name="email" type="email" inputMode="email" autoComplete="email" required defaultValue={email} />
         </div>
-        {emailState.error && <p role="alert" className="text-sm text-red-700">{emailState.error}</p>}
-        <button className="btn w-full border-gray-900 bg-gray-900 text-white" disabled={sending}>
+        {emailState.error && (
+          <p role="alert" className="msg-error">
+            {emailState.error}
+          </p>
+        )}
+        <button className="btn btn-primary w-full" disabled={sending}>
           {sending ? 'Sending…' : 'Send login code'}
         </button>
       </form>
@@ -26,18 +30,31 @@ export function LoginForm() {
   }
 
   return (
-    <form action={codeAction} className="space-y-3">
+    <form action={codeAction} className="space-y-4">
       <input type="hidden" name="email" value={email} />
-      <p className="text-sm text-gray-700">{emailState.info}</p>
+      <p className="muted">{emailState.info}</p>
       <div>
         <label htmlFor="code">6-digit code</label>
-        <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" required autoFocus />
+        <input
+          id="code"
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9 ]{6,8}"
+          required
+          autoFocus
+          className="num text-center text-2xl tracking-[0.4em]"
+        />
       </div>
-      {codeState.error && <p role="alert" className="text-sm text-red-700">{codeState.error}</p>}
-      <button className="btn w-full border-gray-900 bg-gray-900 text-white" disabled={verifying}>
+      {codeState.error && (
+        <p role="alert" className="msg-error">
+          {codeState.error}
+        </p>
+      )}
+      <button className="btn btn-primary w-full" disabled={verifying}>
         {verifying ? 'Checking…' : 'Log in'}
       </button>
-      <p className="text-xs text-gray-600">You can also tap the link in the email instead of typing the code.</p>
+      <p className="faint">You can also tap the link in the email instead of typing the code.</p>
     </form>
   )
 }

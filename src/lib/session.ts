@@ -14,7 +14,7 @@ export const getMe = cache(async () => {
   return { supabase, user, me }
 })
 
-/** Use at the top of a page: redirects unless the user has one of the given roles. */
+/** Use at the top of a page. With roles: redirects unless the user has one of them. */
 export async function requireRole(...roles: Role[]) {
   const { supabase, user, me } = await getMe()
   if (!user) redirect('/login')
@@ -29,12 +29,31 @@ export const getTargets = cache(async () => {
   return data!
 })
 
+// ---- what each role may do (the database enforces the same rules) ----
+
+/** Full control: shoot days, crew, scripts, announcements, files. */
 export function canEditAll(me: Person) {
   return me.role === 'manager' || (me.role === 'member' && me.access === 'edit')
 }
 
+/** May set a shoot day's location and add place photos. */
+export function canEditLocation(me: Person) {
+  return canEditAll(me) || me.role === 'organizer'
+}
+
+/** Reads every announcement and file. Models read what is assigned to them. */
+export function seesEverything(me: Person) {
+  return me.role !== 'model'
+}
+
+export const ROLE_LABEL: Record<Role, string> = {
+  manager: 'Manager',
+  model: 'Model',
+  photographer: 'Photographer',
+  organizer: 'Organizer',
+  member: 'Member',
+}
+
 export function homeFor(me: Person) {
-  if (me.role === 'model') return '/calendar'
-  if (me.role === 'photographer') return '/photographer'
-  return '/dashboard'
+  return me.id ? '/dashboard' : '/login'
 }

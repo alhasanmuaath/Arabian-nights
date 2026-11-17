@@ -1,436 +1,342 @@
 import Link from 'next/link'
 import { ActionForm, SubmitButton } from '@/components/ActionForm'
-import { AvailabilityForm, TimeSelect } from '@/components/AvailabilityForm'
+import { Avatar } from '@/components/Avatar'
+import { Icon } from '@/components/Icon'
 import { ProgressBar } from '@/components/ProgressBar'
-import { SmallAction } from '@/components/SmallAction'
+import { DateBlock, RespondBox, ShootRow, crewOf } from '@/components/ShootBits'
 import { StatusBadge } from '@/components/StatusBadge'
-import { fmtDate, fmtHours, fmtTime, seasonDates } from '@/lib/dates'
-import { canEditAll, getTargets, requireRole } from '@/lib/session'
-import type { Availability, Person, ShootDay, Targets } from '@/lib/types'
-import {
-  assignPhotographer,
-  createShootDay,
-  deleteAvailability,
-  deleteShootDay,
-  removePhotographerAssignment,
-  reviewAvailability,
-  updatePhotographerAgreement,
-  updateShootDay,
-  updateTargets,
-} from '../actions'
+import { getTeam } from '@/lib/data'
+import { cairoHour, cairoToday, fmtDateLong, fmtStamp, fmtTime, relDay } from '@/lib/dates'
+import { ROLE_LABEL, getTargets, requireRole } from '@/lib/session'
+import type { Attendee, ShootDay, Targets, TeamMember } from '@/lib/types'
+import { updateTargets } from '../actions'
 
-const STATUSES = ['free', 'offered', 'confirmed', 'completed'] as const
-type ShootPhotographer = {
-  id: string
-  shoot_day_id: string
-  photographer_id: string
-  agreed_amount: number
-  people: Pick<Person, 'name'> | null
-}
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ person?: string }> }) {
-  const { supabase, me } = await requireRole('manager', 'member')
-  const canEdit = canEditAll(me)
+type Reason = { attendee_id: string; reason: string }
+type News = { id: string; title: string; body: string; created_at: string }
+
+export default async function Dashboard() {
+  const { supabase, me } = await requireRole()
   const isManager = me.role === 'manager'
-  const targets = await getTargets()
-  const dates = seasonDates(targets.season_start, targets.season_end)
-  const { person: personFilter } = await searchParams
+  const today = cairoToday()
 
-  const [{ data: p }, { data: a }, { data: s }, { data: sp }] = await Promise.all([
-  supabase.from('people').select('*').order('name'),
-  supabase.from('availability').select('*').order('date').order('start_time'),
-  supabase.from('shoot_days').select('*').order('date').order('created_at'),
-  supabase
-    .from('shoot_photographers')
-    .select('id, shoot_day_id, photographer_id, agreed_amount, people!shoot_photographers_photographer_id_fkey(name)')
-    .order('created_at'),
-])
-  const people = (p ?? []) as Person[]
-  const avail = (a ?? []) as Availability[]
-  const shoots = (s ?? []) as ShootDay[]
-  const photographerAssignments = (sp ?? []) as unknown as ShootPhotographer[]
-  
-  const photographers = people.filter((x) => x.role === 'photographer')
-  const assignmentsByShoot = new Map<string, ShootPhotographer[]>()
+  const [targets, team, daysRes, crewRes, newsRes, reasonsRes] = await Promise.all([
+    getTargets(),
+    getTeam(supabase),
+    supabase.from('shoot_days').select('*').order('date').order('start_time'),
+    supabase.from('shoot_attendees').select('*'),
+    supabase.from('announcements').select('id, title, body, created_at').order('created_at', { ascending: false }).limit(3),
+    isManager ? supabase.from('shoot_decline_reasons').select('attendee_id, reason') : Promise.resolve({ data: [] }),
+  ])
+  const days = (daysRes.data ?? []) as ShootDay[]
+  const attendees = (crewRes.data ?? []) as Attendee[]
+  const news = (newsRes.data ?? []) as News[]
+  const reasons = new Map(((reasonsRes.data ?? []) as Reason[]).map((r) => [r.attendee_id, r.reason]))
 
-  for (const assignment of photographerAssignments) {
-    assignmentsByShoot.set(
-      assignment.shoot_day_id,
-      [...(assignmentsByShoot.get(assignment.shoot_day_id) ?? []), assignment],
-    )
-  }
-  const models = people.filter((x) => x.role === 'model')
-  const nameOf = new Map(people.map((x) => [x.id, x.name]))
+  const upcoming = days.filter((d) => d.status === 'planned' && d.date >= today)
+  const next = upcoming[0]
+  const later = upcoming.slice(1, 6)
+  const upcomingIds = new Set(upcoming.map((d) => d.id))
 
-  // ---- totals for the progress bars ----
-  const booked = shoots.filter((d) => d.status === 'confirmed' || d.status === 'completed')
-  const hoursBooked = booked.reduce((t, d) => t + Number(d.hours), 0)
-  const videosAssigned = shoots.filter((d) => d.person_id).reduce((t, d) => t + d.videos_planned, 0)
-  const completedDays = shoots.filter((d) => d.status === 'completed').length
+  // what I still have to answer
+  const mine = attendees.filter((a) => a.person_id === me.id && upcomingIds.has(a.shoot_day_id))
+  const toAnswer = mine
+    .filter((a) => a.response === 'pending' && a.shoot_day_id !== next?.id)
+    .map((a) => ({ a, day: upcoming.find((d) => d.id === a.shoot_day_id)! }))
+  const myNext = next ? mine.find((a) => a.shoot_day_id === next.id) : undefined
 
-  // ---- availability grouped by date ----
-  const shownAvail = personFilter ? avail.filter((w) => w.person_id === personFilter) : avail
-  const byDate = new Map<string, Availability[]>()
-  for (const w of shownAvail) byDate.set(w.date, [...(byDate.get(w.date) ?? []), w])
+  // season numbers
+  const live = days.filter((d) => d.status !== 'cancelled')
+  const completed = live.filter((d) => d.status === 'completed')
+  const hours = live.reduce((t, d) => t + Number(d.hours), 0)
+  const videos = live.reduce((t, d) => t + d.videos_planned, 0)
+
+  // manager: who has not answered, who declined
+  const open = attendees.filter((a) => upcomingIds.has(a.shoot_day_id))
+  const waiting = open.filter((a) => a.response === 'pending')
+  const declined = open.filter((a) => a.response === 'declined')
+
+  const hour = cairoHour()
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
   return (
     <>
-           <div>
-        <h1>Manager dashboard</h1>
-        <p className="muted">
-          {fmtDate(targets.season_start)} – {fmtDate(targets.season_end)} · all times Cairo
-          {!canEdit && ' · view only'}
-        </p>
-
-        <Link
-          href="/team-calendar"
-          className="mt-3 inline-block rounded border px-3 py-2 text-sm underline"
-        >
-          Open Team Calendar →
-        </Link>
-      </div>
-
-      <section className="card space-y-4">
-        <h2>Progress</h2>
-        <ProgressBar label="Hours booked" value={hoursBooked} target={Number(targets.target_hours)} unit=" h" note="Confirmed + completed shoot days." />
-        <ProgressBar label="Videos assigned" value={videosAssigned} target={targets.target_videos} note="Videos planned on shoot days that have a model." />
-        <ProgressBar
-          label="Shoot days booked"
-          value={booked.length}
-          target={targets.target_days_max}
-          note={`Target ${targets.target_days_min}–${targets.target_days_max} days · ${completedDays} completed.`}
-        />
-        {isManager && <TargetsForm targets={targets} />}
-      </section>
-
-      <section className="card space-y-3">
-        <h2>Shoot days</h2>
-        {shoots.length === 0 && <p className="muted">No shoot days yet.</p>}
-        <ul className="divide-y divide-gray-100">
-          {shoots.map((d) => (
-            <li key={d.id} className="py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <div>
-                  <strong>{fmtDate(d.date)}</strong>
-                  {d.start_time && ` · ${fmtTime(d.start_time)}`} · {fmtHours(d.hours)} · {d.videos_planned} videos
-                  <div className="text-gray-700">{d.person_id ? nameOf.get(d.person_id) : 'Nobody assigned'}</div>
-                  {d.notes && <div className="text-xs text-gray-600">{d.notes}</div>}
-                </div>
-                <StatusBadge status={d.status} />
-              </div>
-              {canEdit && (
-                <details className="mt-1">
-                  <summary className="cursor-pointer text-sm text-gray-700 underline">Edit</summary>
-                  <div className="mt-2 rounded border border-gray-200 p-3">
-                    <ShootDayForm dates={dates} models={models} day={d} />
-                    {isManager && (
-  <div className="mt-4 space-y-3 border-t pt-3">
-    <h3 className="font-medium">Photographers assigned</h3>
-
-    {(assignmentsByShoot.get(d.id) ?? []).length === 0 && (
-      <p className="text-sm text-gray-600">No photographers assigned.</p>
-    )}
-
-    {(assignmentsByShoot.get(d.id) ?? []).map((assignment) => (
-      <div key={assignment.id} className="flex flex-wrap items-end gap-2 rounded border p-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">
-            {assignment.people?.name ?? 'Photographer'}
-          </p>
-          <ActionForm action={updatePhotographerAgreement} className="mt-2 flex items-end gap-2">
-            <input type="hidden" name="id" value={assignment.id} />
-            <div>
-              <label htmlFor={`agreement-${assignment.id}`} className="text-xs">
-                Agreed amount ({targets.currency})
-              </label>
-              <input
-                id={`agreement-${assignment.id}`}
-                name="agreed_amount"
-                type="number"
-                min={0}
-                step="0.01"
-                defaultValue={assignment.agreed_amount}
-                className="w-32"
-                required
-              />
-            </div>
-            <SubmitButton variant="secondary">Save amount</SubmitButton>
-          </ActionForm>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">{fmtDateLong(today)}</p>
+          <h1 className="mt-1">
+            {greeting}, {me.name.split(' ')[0]}
+          </h1>
         </div>
+        <span className="chip chip-role">{ROLE_LABEL[me.role]}</span>
+      </header>
 
-        <SmallAction
-          action={removePhotographerAssignment}
-          fields={{ id: assignment.id }}
-          label="Remove"
-          variant="danger"
-        />
-      </div>
-    ))}
-
-    {photographers.length > 0 ? (
-      <ActionForm action={assignPhotographer} className="grid grid-cols-2 gap-2 rounded border p-3">
-        <input type="hidden" name="shoot_day_id" value={d.id} />
-        <div className="col-span-2">
-          <label htmlFor={`photographer-${d.id}`}>Add photographer</label>
-          <select id={`photographer-${d.id}`} name="photographer_id" required defaultValue="">
-            <option value="">Choose photographer</option>
-            {photographers
-              .filter((person) => !(assignmentsByShoot.get(d.id) ?? []).some(
-                (assignment) => assignment.photographer_id === person.id
-              ))
-              .map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-          </select>
-        </div>
-        <div className="col-span-2">
-          <label htmlFor={`new-agreement-${d.id}`}>
-            Agreed amount ({targets.currency})
-          </label>
-          <input
-            id={`new-agreement-${d.id}`}
-            name="agreed_amount"
-            type="number"
-            min={0}
-            step="0.01"
-            defaultValue={0}
-            required
-          />
-        </div>
-        <div className="col-span-2">
-          <SubmitButton>Add photographer</SubmitButton>
-        </div>
-      </ActionForm>
-    ) : (
-      <p className="text-sm text-gray-600">
-        No photographer accounts yet. Add one in People first.
-      </p>
-    )}
-  </div>
-)}
-                    <div className="mt-2">
-                      <SmallAction action={deleteShootDay} fields={{ id: d.id }} label="Delete shoot day" variant="danger" />
-                    </div>
-                  </div>
-                </details>
-              )}
-            </li>
-          ))}
-        </ul>
-        {canEdit && (
-          <details>
-            <summary className="cursor-pointer text-sm font-medium underline">Add a shoot day</summary>
-            <div className="mt-2 rounded border border-gray-200 p-3">
-              <ShootDayForm dates={dates} models={models} />
-            </div>
-          </details>
-        )}
-      </section>
-
-      <section className="card">
-        <h2 className="mb-2">Models</h2>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Free time</th>
-              <th>Booked</th>
-              <th>Videos</th>
-              <th>Done</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((m) => {
-              const mine = shoots.filter((d) => d.person_id === m.id)
-              return (
-                <tr key={m.id}>
-                  <td>
-                    <Link className="underline" href={`/dashboard?person=${m.id}#availability`}>
-                      {m.name}
-                    </Link>
-                  </td>
-                  <td>{fmtHours(avail.filter((w) => w.person_id === m.id && w.status === 'approved').reduce((t, w) => t + Number(w.hours), 0))}</td>
-                  <td>{mine.filter((d) => d.status === 'confirmed' || d.status === 'completed').length} days</td>
-                  <td>{mine.reduce((t, d) => t + d.videos_planned, 0)}</td>
-                  <td>{mine.filter((d) => d.status === 'completed').length}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      <section id="availability" className="card space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2>Availability by date</h2>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <Link className={!personFilter ? 'font-semibold' : 'underline'} href="/dashboard#availability">
-              Everyone
-            </Link>
-            {models.map((m) => (
-              <Link key={m.id} className={personFilter === m.id ? 'font-semibold' : 'underline'} href={`/dashboard?person=${m.id}#availability`}>
-                {m.name}
+      {toAnswer.length > 0 && (
+        <section className="glass glass-pad space-y-4 border-wait/40">
+          <div className="flex items-center gap-2">
+            <Icon name="flag" className="text-wait" />
+            <h2>Also waiting for your answer</h2>
+          </div>
+          {toAnswer.map(({ a, day }) => (
+            <div key={a.id} className="row space-y-3">
+              <Link href={`/shoots/${day.id}`} className="flex items-center gap-3 no-underline">
+                <DateBlock date={day.date} />
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{day.title || 'Shoot day'}</span>
+                  <span className="faint block">
+                    {relDay(day.date, today)}
+                    {(day.meeting_time || day.start_time) && ` · ${fmtTime(day.meeting_time || day.start_time)}`}
+                    {day.location_name && ` · ${day.location_name}`}
+                  </span>
+                </span>
               </Link>
-            ))}
+              <RespondBox dayId={day.id} current={a.response} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+        <div className="space-y-5">
+          {next ? (
+            <NextShoot day={next} attendees={attendees} team={team} today={today} myResponse={myNext?.response} />
+          ) : (
+            <section className="glass glass-hero glass-pad">
+              <p className="eyebrow">Next shoot</p>
+              <h2 className="mt-2">Nothing planned yet</h2>
+              <p className="muted mt-1">
+                {isManager ? 'Add the next shoot day and pick who should be there.' : 'The manager will add the next shoot day here.'}
+              </p>
+              {isManager && (
+                <Link href="/shoots#new" className="btn btn-primary mt-4">
+                  <Icon name="plus" size={16} /> New shoot day
+                </Link>
+              )}
+            </section>
+          )}
+
+          <section className="glass glass-pad">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2>Coming up</h2>
+              <Link href="/shoots" className="link text-sm">
+                All shoot days
+              </Link>
+            </div>
+            {later.length ? (
+              <div className="space-y-2.5">
+                {later.map((d) => (
+                  <ShootRow key={d.id} day={d} attendees={attendees} team={team} today={today} />
+                ))}
+              </div>
+            ) : (
+              <p className="muted">{next ? 'No other shoot days planned after this one.' : 'No shoot days planned.'}</p>
+            )}
+          </section>
+
+          {isManager && (waiting.length > 0 || declined.length > 0) && (
+            <section className="glass glass-pad space-y-4">
+              <h2>Crew answers</h2>
+              {declined.length > 0 && (
+                <div>
+                  <p className="faint mb-2">Declined</p>
+                  <ul className="space-y-2">
+                    {declined.map((a) => {
+                      const day = upcoming.find((d) => d.id === a.shoot_day_id)!
+                      const name = team.get(a.person_id)?.name ?? 'Someone'
+                      return (
+                        <li key={a.id}>
+                          <Link href={`/shoots/${day.id}`} className="row flex gap-3 no-underline">
+                            <Avatar name={name} size={34} response="declined" />
+                            <span className="min-w-0">
+                              <span className="block font-medium">
+                                {name} · {relDay(day.date, today).toLowerCase()}
+                              </span>
+                              <span className="muted block">{reasons.get(a.id) ?? 'No reason given'}</span>
+                            </span>
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+              {waiting.length > 0 && (
+                <div>
+                  <p className="faint mb-2">No answer yet</p>
+                  <div className="flex flex-wrap gap-2">
+                    {waiting.map((a) => {
+                      const day = upcoming.find((d) => d.id === a.shoot_day_id)!
+                      return (
+                        <Link key={a.id} href={`/shoots/${day.id}`} className="chip chip-wait no-underline">
+                          {team.get(a.person_id)?.name ?? 'Someone'} · {relDay(day.date, today).toLowerCase()}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <section className="glass glass-pad space-y-4">
+            <h2>Season so far</h2>
+            <ProgressBar
+              label="Shoot days"
+              value={live.length}
+              target={targets.target_days_max}
+              note={`${completed.length} completed · ${live.length - completed.length} still to come · goal ${targets.target_days_min}–${targets.target_days_max}`}
+            />
+            <ProgressBar label="Videos planned" value={videos} target={targets.target_videos} />
+            <ProgressBar label="Shoot hours" value={hours} target={Number(targets.target_hours)} unit=" h" />
+            {isManager && <TargetsForm targets={targets} />}
+          </section>
+
+          <section className="glass glass-pad">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2>Latest news</h2>
+              <Link href="/announcements" className="link text-sm">
+                All news
+              </Link>
+            </div>
+            {news.length ? (
+              <ul className="space-y-2.5">
+                {news.map((n) => (
+                  <li key={n.id}>
+                    <Link href={`/announcements#a-${n.id}`} className="row block no-underline">
+                      <span className="block font-medium">{n.title}</span>
+                      <span className="muted mt-0.5 line-clamp-2 block">{n.body}</span>
+                      <span className="faint mt-1 block">{fmtStamp(n.created_at)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No announcements yet.</p>
+            )}
+          </section>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function NextShoot({
+  day,
+  attendees,
+  team,
+  today,
+  myResponse,
+}: {
+  day: ShootDay
+  attendees: Attendee[]
+  team: Map<string, TeamMember>
+  today: string
+  myResponse?: Attendee['response']
+}) {
+  const crew = crewOf(day, attendees, team)
+  const coming = crew.filter((c) => c.response !== 'declined')
+  return (
+    <section className="glass glass-hero glass-pad">
+      <div className="flex items-center justify-between gap-2">
+        <p className="eyebrow">Next shoot · {relDay(day.date, today)}</p>
+        {myResponse && <StatusBadge status={myResponse} label={myResponse === 'accepted' ? "You're in" : undefined} />}
+      </div>
+
+      <div className="mt-3 flex items-center gap-4">
+        <DateBlock date={day.date} size="lg" />
+        <div className="min-w-0">
+          <h2 className="truncate text-[1.375rem] leading-tight">{day.title || 'Shoot day'}</h2>
+          <p className="muted">{fmtDateLong(day.date)}</p>
+        </div>
+      </div>
+
+      <dl className="mt-4 grid gap-2.5 sm:grid-cols-2">
+        <div className="row flex items-start gap-2.5">
+          <Icon name="clock" className="mt-0.5 text-gold-300" />
+          <div className="min-w-0">
+            <dt className="faint">Meet</dt>
+            <dd className="font-medium">
+              {day.meeting_time ? fmtTime(day.meeting_time) : 'Time to be confirmed'}
+              {day.meeting_point && <span className="muted block font-normal">{day.meeting_point}</span>}
+            </dd>
           </div>
         </div>
-        {byDate.size === 0 && <p className="muted">No availability yet.</p>}
-        <div className="divide-y divide-gray-100">
-          {[...byDate.entries()].map(([date, ws]) => {
-            const shootsThatDay = shoots.filter((d) => d.date === date)
-            return (
-              <div key={date} className="py-2">
-                <p className="text-sm font-semibold">
-                  {fmtDate(date)}
-                  {shootsThatDay.length > 0 && (
-                    <span className="ml-2 font-normal text-gray-600">
-                      · {shootsThatDay.length} shoot day{shootsThatDay.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </p>
-                <ul>
-                  {ws.map((w) => (
-                    
-<li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-  <div className="flex flex-wrap items-center gap-2">
-    <span>
-      <strong>{nameOf.get(w.person_id) ?? 'Unknown model'}</strong>
-      {' · '}{fmtTime(w.start_time)}–{fmtTime(w.end_time)}{' '}
-      <span className="text-gray-600">({fmtHours(w.hours)})</span>
-    </span>
-    <StatusBadge status={w.status} />
-  </div>
-
-  <div className="flex flex-wrap items-center gap-2">
-    {canEdit && w.status === 'pending' && (
-      <>
-        <SmallAction
-          action={reviewAvailability}
-          fields={{ id: w.id, status: 'approved' }}
-          label="Approve"
-          variant="primary"
-        />
-        <SmallAction
-          action={reviewAvailability}
-          fields={{ id: w.id, status: 'rejected' }}
-          label="Reject"
-          variant="danger"
-        />
-      </>
-    )}
-    {canEdit && (
-      <SmallAction
-        action={deleteAvailability}
-        fields={{ id: w.id }}
-        label="Remove"
-        variant="danger"
-      />
-    )}
-  </div>
-</li>
-
-                  ))}
-                </ul>
-              </div>
-            )
-          })}
+        <div className="row flex items-start gap-2.5">
+          <Icon name="pin" className="mt-0.5 text-gold-300" />
+          <div className="min-w-0">
+            <dt className="faint">Location</dt>
+            <dd className="font-medium">
+              {day.location_name || 'To be confirmed'}
+              {day.start_time && <span className="muted block font-normal">Shooting from {fmtTime(day.start_time)}</span>}
+            </dd>
+          </div>
         </div>
-        {canEdit && (
-          <details>
-            <summary className="cursor-pointer text-sm font-medium underline">Add availability for someone</summary>
-            <div className="mt-2 rounded border border-gray-200 p-3">
-              <AvailabilityForm dates={dates} people={models} />
-            </div>
-          </details>
+      </dl>
+
+      <div className="mt-4">
+        <p className="faint mb-2">Who will be there ({coming.length})</p>
+        {crew.length ? (
+          <ul className="flex flex-wrap gap-2">
+            {crew.map((c) => (
+              <li
+                key={c.id}
+                className={`flex items-center gap-2 rounded-full border border-white/12 bg-white/6 py-1 pl-1 pr-3 text-sm ${
+                  c.response === 'declined' ? 'text-ink-3 line-through' : ''
+                }`}
+              >
+                <Avatar name={c.name} size={26} response={c.response} />
+                {c.name.split(' ')[0]}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">The crew has not been picked yet.</p>
         )}
-      </section>
-    </>
+      </div>
+
+      {myResponse === 'pending' && (
+        <div className="mt-5 rounded-2xl border border-gold-300/40 bg-night-950/35 p-4">
+          <p className="mb-3 flex items-center gap-2 font-semibold">
+            <Icon name="flag" size={16} className="text-wait" /> Will you be there?
+          </p>
+          <RespondBox dayId={day.id} current={myResponse} />
+        </div>
+      )}
+
+      <Link href={`/shoots/${day.id}`} className={`btn mt-5 w-full sm:w-auto ${myResponse === 'pending' ? '' : 'btn-primary'}`}>
+        Open shoot day
+        <Icon name="chevron" size={16} />
+      </Link>
+    </section>
   )
 }
 
 function TargetsForm({ targets }: { targets: Targets }) {
   return (
-    <details>
-      <summary className="cursor-pointer text-sm font-medium underline">Edit targets</summary>
-      <ActionForm action={updateTargets} className="mt-2 grid grid-cols-2 gap-3 rounded border border-gray-200 p-3">
+    <details className="disclosure">
+      <summary className="link text-sm">Edit goals</summary>
+      <ActionForm action={updateTargets} className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="target_hours">Total shoot hours</label>
-          <input id="target_hours" name="target_hours" type="number" min={0} step={0.5} defaultValue={targets.target_hours} required />
-        </div>
-        <div>
-          <label htmlFor="target_videos">Total videos</label>
-          <input id="target_videos" name="target_videos" type="number" min={0} defaultValue={targets.target_videos} required />
-        </div>
-        <div>
-          <label htmlFor="target_days_min">Shoot days (min)</label>
+          <label htmlFor="target_days_min">Days (min)</label>
           <input id="target_days_min" name="target_days_min" type="number" min={0} defaultValue={targets.target_days_min} required />
         </div>
         <div>
-          <label htmlFor="target_days_max">Shoot days (max)</label>
+          <label htmlFor="target_days_max">Days (max)</label>
           <input id="target_days_max" name="target_days_max" type="number" min={0} defaultValue={targets.target_days_max} required />
         </div>
+        <div>
+          <label htmlFor="target_videos">Videos</label>
+          <input id="target_videos" name="target_videos" type="number" min={0} defaultValue={targets.target_videos} required />
+        </div>
+        <div>
+          <label htmlFor="target_hours">Hours</label>
+          <input id="target_hours" name="target_hours" type="number" min={0} step={0.5} defaultValue={targets.target_hours} required />
+        </div>
         <div className="col-span-2">
-          <SubmitButton>Save targets</SubmitButton>
+          <SubmitButton small>Save goals</SubmitButton>
         </div>
       </ActionForm>
     </details>
-  )
-}
-
-function ShootDayForm({ dates, models, day }: { dates: string[]; models: Person[]; day?: ShootDay }) {
-  const p = day ? `sd-${day.id}-` : 'sd-new-'
-  return (
-    <ActionForm action={day ? updateShootDay : createShootDay} className="grid grid-cols-2 gap-3" resetOnSuccess={!day}>
-      {day && <input type="hidden" name="id" value={day.id} />}
-      <div>
-        <label htmlFor={`${p}date`}>Date</label>
-        <select id={`${p}date`} name="date" defaultValue={day?.date ?? dates[0]} required>
-          {dates.map((d) => (
-            <option key={d} value={d}>
-              {fmtDate(d)}
-            </option>
-          ))}
-        </select>
-      </div>
-      <TimeSelect id={`${p}start`} name="start_time" label="Start (Cairo)" defaultValue={day?.start_time ? fmtTime(day.start_time) : '10:00'} />
-      <div>
-        <label htmlFor={`${p}hours`}>Hours (max 6)</label>
-        <input id={`${p}hours`} name="hours" type="number" min={0.5} max={4} step={0.5} defaultValue={day?.hours ?? 4} required />
-      </div>
-      <div>
-        <label htmlFor={`${p}videos`}>Videos planned</label>
-        <input id={`${p}videos`} name="videos_planned" type="number" min={0} defaultValue={day?.videos_planned ?? 4} required />
-      </div>
-      <div>
-        <label htmlFor={`${p}person`}>Model</label>
-        <select id={`${p}person`} name="person_id" defaultValue={day?.person_id ?? ''}>
-          <option value="">— Nobody (free) —</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor={`${p}status`}>Status</label>
-        <select id={`${p}status`} name="status" defaultValue={day?.status ?? 'free'}>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="col-span-2">
-        <label htmlFor={`${p}notes`}>Notes</label>
-        <input id={`${p}notes`} name="notes" defaultValue={day?.notes ?? ''} placeholder="Optional" />
-      </div>
-      <p className="col-span-2 text-xs text-gray-600">
-        Picking a model sets the day to &quot;offered&quot; until she accepts. No model = &quot;free&quot;. Marking &quot;completed&quot; adds it to Pay.
-      </p>
-      <div className="col-span-2">
-        <SubmitButton>{day ? 'Save' : 'Add shoot day'}</SubmitButton>
-      </div>
-    </ActionForm>
   )
 }

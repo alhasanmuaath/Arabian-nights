@@ -1,30 +1,30 @@
 import { ActionForm, SubmitButton } from '@/components/ActionForm'
+import { Avatar } from '@/components/Avatar'
+import { Icon } from '@/components/Icon'
 import { SmallAction } from '@/components/SmallAction'
-import { requireRole } from '@/lib/session'
+import { ROLE_LABEL, requireRole } from '@/lib/session'
 import type { Person } from '@/lib/types'
 import { invitePerson, removePerson, resendInvite, updatePerson } from '../actions'
 
-function RoleFields({ prefix, person }: { prefix: string; person?: Person }) {
+const ROLE_HELP: Record<string, string> = {
+  model: 'Sees every shoot day and who is on it. Gets announcements and files assigned to her. Sees only her own pay.',
+  photographer: 'Sees every shoot day, announcement and file. Can comment and mark reviewed. Sees only own pay.',
+  organizer: 'Same as photographer, and can set the location and add photos of the place.',
+  manager: 'Full control: shoot days, crew, scripts, announcements, files, pay, people.',
+}
+
+function RoleSelect({ id, value }: { id: string; value: string }) {
   return (
-    <>
-      <div>
-        <label htmlFor={`${prefix}role`}>Role</label>
-        <select id={`${prefix}role`} name="role" defaultValue={person?.role ?? 'model'}>
-          <option value="model">Model: sees only her own data</option>
-          <option value="photographer">Photographer: sees assigned shoots and own data</option>
-          <option value="member">Member: sees all schedules</option>
-          <option value="manager">Manager: full control</option>
-        </select>
-      </div>
-      <div>
-        <label htmlFor={`${prefix}access`}>Member access</label>
-        <select id={`${prefix}access`} name="access" defaultValue={person?.access ?? 'view'}>
-          <option value="view">View only</option>
-          <option value="edit">Can edit schedules</option>
-        </select>
-        <p className="mt-1 text-xs text-gray-600">Only used for members.</p>
-      </div>
-    </>
+    <div>
+      <label htmlFor={id}>Role</label>
+      <select id={id} name="role" defaultValue={value}>
+        <option value="model">Model</option>
+        <option value="photographer">Photographer</option>
+        <option value="organizer">Organizer</option>
+        <option value="manager">Manager</option>
+        {value === 'member' && <option value="member">Member (old role)</option>}
+      </select>
+    </div>
   )
 }
 
@@ -35,65 +35,75 @@ export default async function People() {
 
   return (
     <>
-      <h1>People</h1>
+      <header>
+        <p className="eyebrow">{people.length} on the team</p>
+        <h1 className="mt-1">People</h1>
+      </header>
 
-      <section className="card">
-        <h2 className="mb-2">Invite someone</h2>
-        <ActionForm action={invitePerson} className="space-y-3" resetOnSuccess>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="new-name">Name</label>
-              <input id="new-name" name="name" required />
+      <section className="glass glass-pad">
+        <details className="disclosure">
+          <summary className="btn btn-primary">
+            <Icon name="plus" size={16} /> Invite someone
+          </summary>
+          <ActionForm action={invitePerson} className="space-y-4" resetOnSuccess>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="new-name">Name</label>
+                <input id="new-name" name="name" required />
+              </div>
+              <div>
+                <label htmlFor="new-email">Email (a personal email is fine)</label>
+                <input id="new-email" name="email" type="email" inputMode="email" autoComplete="off" required />
+              </div>
+              <RoleSelect id="new-role" value="model" />
             </div>
-            <div>
-              <label htmlFor="new-email">Email (personal email is fine)</label>
-              <input id="new-email" name="email" type="email" required />
+            <SubmitButton>Send invitation</SubmitButton>
+          </ActionForm>
+        </details>
+        <dl className="faint mt-4 space-y-1.5">
+          {Object.entries(ROLE_HELP).map(([role, text]) => (
+            <div key={role}>
+              <dt className="inline font-semibold text-ink-2">{ROLE_LABEL[role as keyof typeof ROLE_LABEL]}: </dt>
+              <dd className="inline">{text}</dd>
             </div>
-            <RoleFields prefix="new-" />
-          </div>
-          <SubmitButton>Invite</SubmitButton>
-        </ActionForm>
+          ))}
+        </dl>
       </section>
 
-      <section className="card">
-        <h2 className="mb-2">Team ({people.length})</h2>
-        <ul className="divide-y divide-gray-100">
+      <section className="glass glass-pad">
+        <ul className="divide">
           {people.map((p) => (
-            <li key={p.id} className="py-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {p.name} {p.id === me.id && <span className="text-xs text-gray-600">(you)</span>}
+            <li key={p.id} className="py-3 first:pt-0 last:pb-0">
+              <div className="flex items-center gap-3">
+                <Avatar name={p.name} size={44} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {p.name} {p.id === me.id && <span className="faint">(you)</span>}
                   </p>
-                  <p className="truncate text-sm text-gray-700">{p.email}</p>
+                  <p className="faint truncate">{p.email}</p>
                 </div>
-                <div className="text-right text-sm">
-                  <p>
-                    {p.role}
-                    {p.role === 'member' && ` · ${p.access === 'edit' ? 'can edit' : 'view only'}`}
-                  </p>
-                  <p className="text-xs text-gray-600">{p.user_id ? 'Has logged in / has a login' : 'Invite pending'}</p>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="chip chip-role">{ROLE_LABEL[p.role]}</span>
+                  {!p.user_id && <span className="chip chip-wait">Not logged in yet</span>}
                 </div>
               </div>
-              <details className="mt-1">
-                <summary className="cursor-pointer text-sm text-gray-700 underline">Edit</summary>
-                <div className="mt-2 space-y-3 rounded border border-gray-200 p-3">
+              <details className="disclosure mt-2">
+                <summary className="link text-sm">Edit</summary>
+                <div className="space-y-3">
                   <ActionForm action={updatePerson} className="grid gap-3 sm:grid-cols-2">
                     <input type="hidden" name="id" value={p.id} />
-                    <div className="sm:col-span-2">
+                    <div>
                       <label htmlFor={`n-${p.id}`}>Name</label>
                       <input id={`n-${p.id}`} name="name" defaultValue={p.name} required />
                     </div>
-                    <RoleFields prefix={`p-${p.id}-`} person={p} />
+                    <RoleSelect id={`r-${p.id}`} value={p.role} />
                     <div className="sm:col-span-2">
-                      <SubmitButton>Save</SubmitButton>
+                      <SubmitButton small>Save</SubmitButton>
                     </div>
                   </ActionForm>
                   <div className="flex flex-wrap gap-2">
-                    <SmallAction action={resendInvite} fields={{ email: p.email }} label="Resend invite" />
-                    {p.id !== me.id && (
-                      <SmallAction action={removePerson} fields={{ id: p.id }} label="Remove from team" variant="danger" />
-                    )}
+                    <SmallAction action={resendInvite} fields={{ email: p.email }} label="Resend invitation" />
+                    {p.id !== me.id && <SmallAction action={removePerson} fields={{ id: p.id }} label="Remove from team" variant="danger" />}
                   </div>
                 </div>
               </details>

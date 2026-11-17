@@ -1,15 +1,12 @@
-
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Nav } from '@/components/Nav'
+import { Avatar } from '@/components/Avatar'
+import { Icon } from '@/components/Icon'
+import { BellLink, TabBar, TopNav, type NavLink } from '@/components/Nav'
 import { getMe } from '@/lib/session'
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user, me } = await getMe()
-
   if (!user) redirect('/login')
   if (!me) redirect('/no-access')
 
@@ -19,67 +16,39 @@ export default async function AppLayout({
     .eq('person_id', me.id)
     .eq('is_read', false)
 
-  const links =
+  const main: NavLink[] = [
+    { href: '/dashboard', label: 'Home', icon: 'home' },
+    { href: '/shoots', label: 'Shoots', icon: 'calendar' },
+    { href: '/announcements', label: 'News', icon: 'megaphone' },
+    { href: '/files', label: 'Files', icon: 'folder' },
+  ]
+  const desktop: NavLink[] =
     me.role === 'manager'
-      ? [
-          { href: '/dashboard', label: 'Dashboard' },
-          { href: '/pay-manager', label: 'Pay manager' },
-          { href: '/people', label: 'People' },
-          { href: '/announcements', label: 'Announcements' },
-          { href: '/files', label: 'Shared Files' },
-          { href: '/api/manager/export', label: 'Export Data' },
-        ]
-      : me.role === 'model'
-        ? [
-            { href: '/calendar', label: 'Calendar' },
-            { href: '/progress', label: 'Progress' },
-            { href: '/pay', label: 'My Pay' },
-            { href: '/announcements', label: 'Announcements' },
-            { href: '/files', label: 'Shared Files' },
-          ]
-        : me.role === 'photographer'
-          ? [
-              { href: '/photographer', label: 'My Dashboard' },
-              { href: '/announcements', label: 'Announcements' },
-              { href: '/files', label: 'Shared Files' },
-            ]
-          : [
-              { href: '/dashboard', label: 'Dashboard' },
-              { href: '/announcements', label: 'Announcements' },
-              { href: '/files', label: 'Shared Files' },
-            ]
-
-  const roleLabel =
-    me.role === 'member'
-      ? `member · ${me.access === 'edit' ? 'can edit' : 'view only'}`
-      : me.role
+      ? [...main, { href: '/pay-manager', label: 'Pay', icon: 'wallet' }, { href: '/people', label: 'People', icon: 'users' }]
+      : [...main, { href: '/pay', label: 'My pay', icon: 'wallet' }]
+  const phone: NavLink[] = [...main, { href: '/me', label: 'Me', icon: 'dots' }]
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">Shoot Scheduler</p>
-            <p className="truncate text-xs text-gray-600">
-              {me.name} · {roleLabel}
-            </p>
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-30 px-3 pt-3">
+        <div className="glass-bar mx-auto flex max-w-5xl items-center justify-between gap-3 rounded-full py-2 pl-4 pr-2">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-2 no-underline">
+            <Icon name="moon" size={18} className="text-gold-300" />
+            <span className="truncate text-[15px] font-semibold tracking-tight">Arabian Nights</span>
+          </Link>
+          <TopNav links={desktop} />
+          <div className="flex items-center gap-2">
+            <BellLink unread={count ?? 0} />
+            <Link href="/me" aria-label="My account" className="rounded-full">
+              <Avatar name={me.name} size={40} />
+            </Link>
           </div>
-
-          <form action="/auth/signout" method="post">
-            <button className="btn border-gray-300 bg-white text-gray-800">
-              Log out
-            </button>
-          </form>
-        </div>
-
-        <div className="mx-auto max-w-3xl">
-          <Nav links={links} unreadCount={count ?? 0} />
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-4 px-4 py-4 pb-16">
-        {children}
-      </main>
+      <main className="pb-tabbar mx-auto max-w-5xl space-y-5 px-4 pt-6">{children}</main>
+
+      <TabBar links={phone} />
     </div>
   )
 }
