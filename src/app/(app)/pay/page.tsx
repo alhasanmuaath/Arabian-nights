@@ -25,7 +25,7 @@ export default async function MyPay() {
         <h1 className="mt-1">My pay</h1>
       </header>
 
-      <section className="glass glass-hero glass-pad" data-tilt>
+      <section className="glass glass-hero glass-pad">
         <p className="faint">Total earned</p>
         <p className="num text-4xl font-bold tracking-tight">{money(total, cur)}</p>
         <div className="mt-4 grid grid-cols-2 gap-3">

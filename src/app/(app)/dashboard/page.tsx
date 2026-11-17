@@ -80,7 +80,7 @@ export default async function Dashboard() {
           </div>
           {toAnswer.map(({ a, day }) => (
             <div key={a.id} className="row space-y-3">
-              <Link href={`/shoots/${day.id}`} transitionTypes={['drill-in']} className="flex items-center gap-3 no-underline">
+              <Link href={`/shoots/${day.id}`} className="flex items-center gap-3 no-underline">
                 <DateBlock date={day.date} />
                 <span className="min-w-0">
                   <span className="block truncate font-semibold">{day.title || 'Shoot day'}</span>
@@ -146,7 +146,7 @@ export default async function Dashboard() {
                       const name = team.get(a.person_id)?.name ?? 'Someone'
                       return (
                         <li key={a.id}>
-                          <Link href={`/shoots/${day.id}`} transitionTypes={['drill-in']} className="row flex gap-3 no-underline">
+                          <Link href={`/shoots/${day.id}`} className="row flex gap-3 no-underline">
                             <Avatar name={name} size={34} response="declined" />
                             <span className="min-w-0">
                               <span className="block font-medium">
@@ -168,7 +168,7 @@ export default async function Dashboard() {
                     {waiting.map((a) => {
                       const day = upcoming.find((d) => d.id === a.shoot_day_id)!
                       return (
-                        <Link key={a.id} href={`/shoots/${day.id}`} transitionTypes={['drill-in']} className="chip chip-wait no-underline">
+                        <Link key={a.id} href={`/shoots/${day.id}`} className="chip chip-wait no-underline">
                           {team.get(a.person_id)?.name ?? 'Someone'} · {relDay(day.date, today).toLowerCase()}
                         </Link>
                       )
@@ -239,7 +239,7 @@ function NextShoot({
   const crew = crewOf(day, attendees, team)
   const coming = crew.filter((c) => c.response !== 'declined')
   return (
-    <section className="glass glass-hero glass-pad" data-tilt>
+    <section className="glass glass-hero glass-pad">
       <div className="flex items-center justify-between gap-2">
         <p className="eyebrow">Next shoot · {relDay(day.date, today)}</p>
         {myResponse && <StatusBadge status={myResponse} label={myResponse === 'accepted' ? "You're in" : undefined} />}
@@ -307,7 +307,7 @@ function NextShoot({
         </div>
       )}
 
-      <Link href={`/shoots/${day.id}`} transitionTypes={['drill-in']} className={`btn mt-5 w-full sm:w-auto ${myResponse === 'pending' ? '' : 'btn-primary'}`}>
+      <Link href={`/shoots/${day.id}`} className={`btn mt-5 w-full sm:w-auto ${myResponse === 'pending' ? '' : 'btn-primary'}`}>
         Open shoot day
         <Icon name="chevron" size={16} />
       </Link>

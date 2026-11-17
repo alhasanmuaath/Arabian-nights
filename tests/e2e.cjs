@@ -35,16 +35,7 @@ const latestCode = async (email, after) => {
   const full = await newMail(email, after, 'reset code')
   return (full.Text || full.HTML).match(/\b(\d{6})\b/)[1]
 }
-// MOTION=reduce runs the suite the way a phone with "reduce motion" switched on sees the app.
-const REDUCED = process.env.MOTION === 'reduce'
-const phone = (browser) =>
-  browser.newContext({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
-    reducedMotion: REDUCED ? 'reduce' : 'no-preference',
-  })
+const phone = (browser) => browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 
 async function login(browser, email, password = PASSWORD) {
   const ctx = await phone(browser)
@@ -493,74 +484,6 @@ async function openShoot(page, title) {
     const resent = await newMail('sara@example.com', resendAt, 'reset code')
     check('resending to an existing account emails a 6-digit reset code', /\b\d{6}\b/.test(resent.Text))
     await shot(page, '10-people')
-    await ctx.close()
-  }
-
-  // ================= motion: screens move in depth (or not at all with "reduce motion") =================
-  {
-    const { ctx, page } = await login(browser, 'hala@example.com')
-    await sleep(1200)
-    /** Click, then report which screen-change animations ran. */
-    const moves = async (click) => {
-      await click()
-      await page
-        .waitForFunction(() => document.getAnimations().some((a) => (a.effect?.pseudoElement || '').includes('view-transition')), null, { timeout: 4000, polling: 'raf' })
-        .catch(() => {})
-      const names = await page.evaluate(() => document.getAnimations().map((a) => a.animationName || '').filter((n) => n.startsWith('vt-')))
-      await sleep(900)
-      return names.sort().join(',')
-    }
-    const next = await moves(() => page.locator('nav a[href="/shoots"]:visible').first().click())
-    // Very rarely (about 1 in 15 taps) the app shows its default depth move instead of the
-    // "toward you" one; that is harmless, so allow one retry before calling it a failure.
-    let open = ''
-    let back = ''
-    for (let attempt = 0; attempt < 3; attempt++) {
-      open = await moves(() => page.locator('main a.row').first().click())
-      back = await moves(() => page.locator('a:has-text("All shoot days")').click())
-      if (REDUCED || (open === 'vt-from-front,vt-push-back' && back === 'vt-from-back,vt-to-front')) break
-    }
-    const prev = await moves(() => page.locator('nav a[href="/dashboard"]:visible').first().click())
-    if (REDUCED) {
-      check('reduce motion: no screen moves at all', next + open + back + prev === '', [next, open, back, prev].join(' | '))
-    } else {
-      check('a tab to the right turns the screen left-to-right', next === 'vt-in-right,vt-out-left', next)
-      check('opening a shoot day comes from the front', open === 'vt-from-front,vt-push-back', open)
-      check('going back returns it', back === 'vt-from-back,vt-to-front', back)
-      check('a tab to the left turns the other way', prev === 'vt-in-left,vt-out-right', prev)
-    }
-    // the Motion switch in Me: lets a person turn motion on even when the device says "reduce"
-    await page.goto(BASE + '/me')
-    const attr = () => page.evaluate(() => document.documentElement.dataset.motion)
-    check('motion is set before the page shows (follows the device: on, or off under reduce motion)', (await attr()) === (REDUCED ? 'off' : 'on'), await attr())
-    if (REDUCED) {
-      check('under reduce motion the page explains why nothing moves', /reduce motion, so the animations are off/.test(await main(page)))
-    }
-    await page.getByRole('button', { name: 'On', exact: true }).click()
-    check('choosing On turns motion on, even when the device says reduce', (await attr()) === 'on', await attr())
-    const homeOn = await moves(() => page.locator('nav a[href="/dashboard"]:visible').first().click())
-    check('with motion forced on, screens turn (Me to Home goes left)', homeOn === 'vt-in-left,vt-out-right', homeOn)
-    await page.goto(BASE + '/me')
-    check('the choice is remembered after a reload', (await attr()) === 'on' && (await page.getByRole('button', { name: 'On', exact: true }).getAttribute('aria-pressed')) === 'true')
-    await page.getByRole('button', { name: 'Off', exact: true }).click()
-    const homeOff = await moves(() => page.locator('nav a[href="/dashboard"]:visible').first().click())
-    check('choosing Off stops all screen moves', (await attr()) === 'off' && homeOff === '', homeOff)
-    await page.goto(BASE + '/me')
-    await page.getByRole('button', { name: 'Auto', exact: true }).click()
-    check('Auto goes back to following the device', (await attr()) === (REDUCED ? 'off' : 'on'), await attr())
-    await page.goto(BASE + '/dashboard')
-    await sleep(600)
-
-    const clean = await page.evaluate(() => {
-      const m = document.querySelector('main')
-      const hidden = [...m.querySelectorAll('*')].filter((el) => Number(getComputedStyle(el).opacity) < 0.5 && el.getBoundingClientRect().height > 0 && !el.closest('[aria-hidden]')).length
-      const running = document.getAnimations().filter((a) => (a.effect?.pseudoElement || '').includes('view-transition')).length
-      return hidden === 0 && running === 0
-    })
-    check('after the moves nothing is left faded or mid-air', clean)
-    check('the screens ended in the right place', page.url().endsWith('/dashboard') && /Hala/.test(await main(page)))
-    const pill = await page.locator('.tab-pill').evaluate((el) => getComputedStyle(el).transform)
-    check('the tab highlight is back under Home', pill === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(pill), pill)
     await ctx.close()
   }
 

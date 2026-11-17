@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { Avatar } from '@/components/Avatar'
 import { Icon, type IconName } from '@/components/Icon'
-import { MotionSwitch } from '@/components/MotionSwitch'
 import { ROLE_LABEL, requireRole } from '@/lib/session'
 
 export default async function Me() {
@@ -51,14 +50,12 @@ export default async function Me() {
               {inner}
             </a>
           ) : (
-            <Link key={l.href} href={l.href} transitionTypes={['drill-in']} className={cls}>
+            <Link key={l.href} href={l.href} className={cls}>
               {inner}
             </Link>
           )
         })}
       </section>
-
-      <MotionSwitch />
 
       <form action="/auth/signout" method="post">
         <button className="btn w-full">

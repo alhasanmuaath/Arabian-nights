@@ -54,6 +54,20 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* The sky. A fixed layer (not background-attachment) so it stays put on iOS. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(60rem 36rem at 12% -8%, rgb(124 92 255 / 0.42), transparent 60%),
+      radial-gradient(44rem 30rem at 96% 6%, rgb(40 170 200 / 0.26), transparent 62%),
+      radial-gradient(52rem 34rem at 78% 104%, rgb(244 196 98 / 0.20), transparent 60%),
+      radial-gradient(40rem 30rem at 4% 96%, rgb(214 76 160 / 0.20), transparent 62%),
+      linear-gradient(165deg, var(--color-night-900) 0%, var(--color-night-800) 46%, #1b1348 100%);
+  }
+
   h1 { font-size: 1.625rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
   h2 { font-size: 1.0625rem; line-height: 1.3; font-weight: 650; letter-spacing: -0.01em; }
   h3 { font-size: 0.9375rem; font-weight: 600; }
@@ -102,8 +116,8 @@
   :focus-visible { outline: 2px solid var(--color-gold-300); outline-offset: 2px; }
   input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
 
-  :root[data-motion="on"] {
-    & a, & button, & summary, & .row { transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease; }
+  @media (prefers-reduced-motion: no-preference) {
+    a, button, summary, .row { transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease; }
   }
 }
 
@@ -191,7 +205,7 @@
     cursor: pointer;
   }
   .btn:hover { background: rgb(255 255 255 / 0.13); }
-  .btn:active { transform: translateY(1px) scale(0.97); }
+  .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: 0.55; cursor: default; }
   .btn-sm { min-height: 2.25rem; padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
 
@@ -199,17 +213,9 @@
     color: #23180a;
     border-color: rgb(253 233 184 / 0.65);
     background: linear-gradient(180deg, var(--color-gold-300), var(--color-gold-500));
-    /* a raised key: lit top edge, solid lower edge, soft glow */
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.5),
-      0 3px 0 #a9741c,
-      0 10px 22px rgb(227 168 60 / 0.26);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 6px 20px rgb(227 168 60 / 0.28);
   }
   .btn-primary:hover { background: linear-gradient(180deg, var(--color-gold-200), var(--color-gold-400)); }
-  .btn-primary:active {
-    transform: translateY(3px) scale(0.985);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 0 0 #a9741c, 0 4px 10px rgb(227 168 60 / 0.2);
-  }
 
   .btn-danger { color: var(--color-no); border-color: rgb(253 164 180 / 0.36); background: rgb(253 164 180 / 0.08); }
   .btn-danger:hover { background: rgb(253 164 180 / 0.16); }
@@ -270,239 +276,3 @@
 /* room for the phone tab bar */
 .pb-tabbar { padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)); }
 @media (min-width: 768px) { .pb-tabbar { padding-bottom: 3rem; } }
-
-
-/* =====================================================================
-   MOTION — depth and movement for the whole app
-
-   Rules: only transform and opacity move (the GPU does the work, so it
-   stays smooth on phones); nothing lasts longer than about half a second;
-   everything is switched off for people who ask their device for reduced
-   motion.
-   ===================================================================== */
-:root {
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* fast start, soft landing */
-  --ease-in: cubic-bezier(0.5, 0, 0.9, 0.4);      /* leaving the screen */
-  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1); /* small overshoot for pops */
-}
-
-/* ---------- the sky: three layers at different depths ---------- */
-.sky {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  overflow: hidden;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 36rem at 12% -8%, rgb(124 92 255 / 0.42), transparent 60%),
-    radial-gradient(44rem 30rem at 96% 6%, rgb(40 170 200 / 0.26), transparent 62%),
-    radial-gradient(52rem 34rem at 78% 104%, rgb(244 196 98 / 0.2), transparent 60%),
-    radial-gradient(40rem 30rem at 4% 96%, rgb(214 76 160 / 0.2), transparent 62%),
-    linear-gradient(165deg, var(--color-night-900) 0%, var(--color-night-800) 46%, #1b1348 100%);
-}
-.sky-stars {
-  position: absolute;
-  inset: -320px -40px 0 -40px; /* one tile taller than the screen, so the drift can loop */
-  will-change: transform;
-}
-.sky-stars.far {
-  opacity: 0.55;
-  background-size: 260px 260px;
-  background-image:
-    radial-gradient(1px 1px at 22px 34px, #fff, transparent 60%),
-    radial-gradient(1px 1px at 134px 12px, #fff, transparent 60%),
-    radial-gradient(1px 1px at 201px 97px, #cfd8ff, transparent 60%),
-    radial-gradient(1px 1px at 64px 151px, #fff, transparent 60%),
-    radial-gradient(1px 1px at 172px 208px, #ffe9b8, transparent 60%),
-    radial-gradient(1px 1px at 98px 236px, #fff, transparent 60%),
-    radial-gradient(1px 1px at 240px 180px, #fff, transparent 60%);
-  translate: calc(var(--px, 0) * -10px) calc(var(--py, 0) * -10px);
-}
-.sky-stars.near {
-  opacity: 0.8;
-  background-size: 320px 320px;
-  background-image:
-    radial-gradient(1.6px 1.6px at 48px 70px, #fff, transparent 60%),
-    radial-gradient(1.4px 1.4px at 226px 40px, #ffe9b8, transparent 60%),
-    radial-gradient(1.8px 1.8px at 150px 190px, #fff, transparent 60%),
-    radial-gradient(1.4px 1.4px at 290px 260px, #d9ccff, transparent 60%);
-  translate: calc(var(--px, 0) * -26px) calc(var(--py, 0) * -26px);
-}
-.sky-moon {
-  position: absolute;
-  top: -9rem;
-  right: -7rem;
-  width: 26rem;
-  height: 26rem;
-  border-radius: 50%;
-  background: radial-gradient(circle at 38% 38%, rgb(253 233 184 / 0.3), rgb(244 196 98 / 0.11) 44%, transparent 70%);
-  translate: calc(var(--px, 0) * -44px) calc(var(--py, 0) * -44px);
-  will-change: transform;
-}
-
-/* ---------- 3D emblem on the log-in screens: a tilting disc with an orbiting star ---------- */
-.orb {
-  position: relative;
-  display: block;
-  width: 5rem;
-  height: 5rem;
-  margin: 0 auto 1.25rem;
-  perspective: 620px;
-}
-.orb-disc {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--color-gold-300);
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.05));
-  border: 1px solid rgb(255 255 255 / 0.2);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 12px 30px rgb(3 4 20 / 0.45), 0 0 34px rgb(244 196 98 / 0.18);
-}
-.orb-ring {
-  position: absolute;
-  inset: -0.875rem;
-  border-radius: 50%;
-  border: 1px solid rgb(253 233 184 / 0.22);
-  transform: rotateX(72deg);
-}
-.orb-ring i {
-  position: absolute;
-  top: -3px;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  border-radius: 50%;
-  background: var(--color-gold-300);
-  box-shadow: 0 0 10px var(--color-gold-400);
-}
-
-/* ---------- phone tab bar: the highlight slides between tabs ---------- */
-.tab-pill {
-  position: absolute;
-  top: 0.375rem;
-  bottom: 0.375rem;
-  left: 0.375rem;
-  border-radius: 1.25rem;
-  background: rgb(255 255 255 / 0.14);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14);
-}
-
-/* ---------- tilt cards: lean toward the pointer or the finger ---------- */
-[data-tilt] {
-  transform: perspective(1100px) rotateX(calc(var(--ty, 0) * -4.5deg)) rotateY(calc(var(--tx, 0) * 5.5deg));
-}
-[data-tilt]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: var(--tilt-on, 0);
-  background: radial-gradient(
-    26rem 16rem at calc(50% + var(--tx, 0) * 50%) calc(50% + var(--ty, 0) * 50%),
-    rgb(255 255 255 / 0.13),
-    transparent 62%
-  );
-}
-
-/* Motion is on when the device allows it, or when the person turns it on in Me.
-   <html data-motion="on|off"> is set before the page paints (see layout.tsx) and by the switch. */
-:root[data-motion="on"] {
-  /* ----- sky ----- */
-  & .sky-stars.far { animation: sky-drift 150s linear infinite; }
-  & .sky-stars.near { animation: sky-drift-near 95s linear infinite, sky-twinkle 5s ease-in-out infinite alternate; }
-  & .sky-moon { animation: sky-float 16s ease-in-out infinite alternate; }
-
-  /* ----- emblem ----- */
-  & .orb-disc { animation: orb-sway 5.5s ease-in-out infinite alternate; }
-  & .orb-ring { animation: orb-spin 8s linear infinite; }
-
-  /* ----- press + hover depth ----- */
-  & .btn, & .row, & .chip, & [data-tilt], & [data-tilt]::after, & .tab-pill, & .tab-icon {
-    transition:
-      transform 0.28s var(--ease-out),
-      box-shadow 0.28s var(--ease-out),
-      background-color 0.16s ease,
-      border-color 0.16s ease,
-      opacity 0.28s ease;
-  }
-  & .btn:active, & .btn-primary:active { transition-duration: 0.06s; }
-  & a.row:active { transform: scale(0.985); }
-  @media (hover: hover) {
-    & a.row:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgb(3 4 20 / 0.3); }
-    & .btn:hover { transform: translateY(-1px); }
-    & .btn:active, & .btn-primary:active { transform: translateY(2px) scale(0.98); }
-  }
-  & .tab-pill { transition: transform 0.46s var(--ease-spring), opacity 0.2s ease; }
-  & .tab-on .tab-icon { animation: tab-pop 0.5s var(--ease-spring) both; }
-
-  /* ----- things that arrive ----- */
-  & .leaf { animation: leaf-flip 0.62s var(--ease-spring) both; transform-origin: 50% 0; }
-  & .pop { animation: pop-in 0.44s var(--ease-spring) both; animation-delay: calc(var(--i, 0) * 45ms + 120ms); }
-  & .bar-fill { transform-origin: 0 50%; animation: bar-grow 0.95s var(--ease-out) 0.18s both; }
-  & .badge-pop { animation: pop-in 0.5s var(--ease-spring) 0.25s both; }
-  & details[open] > :not(summary) { animation: unfold 0.34s var(--ease-out) both; transform-origin: 50% 0; }
-  & .msg-ok, & .msg-error { animation: msg-in 0.3s var(--ease-out) both; }
-  & .chip-wait .dot { animation: dot-pulse 1.8s ease-in-out infinite; }
-
-  /* ----- moving between screens (see app/(app)/template.tsx) ----- */
-  &::view-transition { pointer-events: none; } /* taps still reach the app while a screen is changing */
-
-  /* default: the old screen sinks back, the new one rises forward */
-  &::view-transition-old(.sink) { animation: 0.13s var(--ease-in) both vt-sink; transform-origin: 50% 20rem; }
-  &::view-transition-new(.rise) { animation: 0.42s var(--ease-out) 0.1s both vt-rise; transform-origin: 50% 20rem; }
-
-  /* tabs: screens turn like the faces of a box */
-  &::view-transition-old(.out-left) { animation: 0.15s var(--ease-in) both vt-out-left; }
-  &::view-transition-new(.in-right) { animation: 0.42s var(--ease-out) 0.11s both vt-in-right; }
-  &::view-transition-old(.out-right) { animation: 0.15s var(--ease-in) both vt-out-right; }
-  &::view-transition-new(.in-left) { animation: 0.42s var(--ease-out) 0.11s both vt-in-left; }
-
-  /* opening something: push the list away, the detail comes from the front */
-  &::view-transition-old(.push-back) { animation: 0.14s var(--ease-in) both vt-push-back; transform-origin: 50% 20rem; }
-  &::view-transition-new(.from-front) { animation: 0.42s var(--ease-out) 0.1s both vt-from-front; transform-origin: 50% 20rem; }
-  /* going back: the detail drops toward you, the list returns from behind */
-  &::view-transition-old(.to-front) { animation: 0.14s var(--ease-in) both vt-to-front; transform-origin: 50% 20rem; }
-  &::view-transition-new(.from-back) { animation: 0.42s var(--ease-out) 0.1s both vt-from-back; transform-origin: 50% 20rem; }
-}
-
-/* Motion off: screens change with a very short fade, nothing moves. */
-:root[data-motion="off"] {
-  &::view-transition-group(*),
-  &::view-transition-old(*),
-  &::view-transition-new(*) {
-    animation-duration: 0.1s !important;
-    animation-delay: 0s !important;
-  }
-}
-
-@keyframes sky-drift { to { transform: translate3d(0, 260px, 0); } }
-@keyframes sky-drift-near { to { transform: translate3d(0, 320px, 0); } }
-@keyframes sky-twinkle { from { opacity: 0.45; } to { opacity: 0.9; } }
-@keyframes sky-float { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-1.5rem, 1.25rem, 0) scale(1.06); } }
-
-@keyframes orb-sway { from { transform: rotateY(-34deg) rotateX(10deg); } to { transform: rotateY(34deg) rotateX(-8deg); } }
-@keyframes orb-spin { to { transform: rotateX(72deg) rotateZ(360deg); } }
-
-@keyframes tab-pop { 0% { transform: translateY(0) scale(1); } 45% { transform: translateY(-5px) scale(1.18) rotateY(180deg); } 100% { transform: translateY(0) scale(1) rotateY(360deg); } }
-@keyframes leaf-flip { from { opacity: 0; transform: perspective(420px) rotateX(-78deg); } to { opacity: 1; transform: perspective(420px) rotateX(0); } }
-@keyframes pop-in { from { opacity: 0; transform: translateY(6px) scale(0.55); } to { opacity: 1; transform: none; } }
-@keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes unfold { from { opacity: 0; transform: perspective(700px) rotateX(-14deg) translateY(-6px); } to { opacity: 1; transform: none; } }
-@keyframes msg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@keyframes dot-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
-
-@keyframes vt-sink { to { opacity: 0; transform: perspective(1100px) translate3d(0, -8px, -90px) rotateX(5deg); } }
-@keyframes vt-rise { from { opacity: 0; transform: perspective(1100px) translate3d(0, 30px, -110px) rotateX(-8deg); } }
-@keyframes vt-out-left { to { opacity: 0; transform: perspective(1100px) translate3d(-22%, 0, -140px) rotateY(16deg); } }
-@keyframes vt-in-right { from { opacity: 0; transform: perspective(1100px) translate3d(24%, 0, -150px) rotateY(-18deg); } }
-@keyframes vt-out-right { to { opacity: 0; transform: perspective(1100px) translate3d(22%, 0, -140px) rotateY(-16deg); } }
-@keyframes vt-in-left { from { opacity: 0; transform: perspective(1100px) translate3d(-24%, 0, -150px) rotateY(18deg); } }
-@keyframes vt-push-back { to { opacity: 0; transform: perspective(1100px) translate3d(0, 0, -220px); } }
-@keyframes vt-from-front { from { opacity: 0; transform: perspective(1100px) translate3d(0, 18px, 130px) rotateX(-4deg); } }
-@keyframes vt-to-front { to { opacity: 0; transform: perspective(1100px) translate3d(0, 14px, 140px); } }
-@keyframes vt-from-back { from { opacity: 0; transform: perspective(1100px) translate3d(0, 0, -200px); } }

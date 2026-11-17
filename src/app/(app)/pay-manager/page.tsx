@@ -52,7 +52,7 @@ export default async function PayManager() {
         <h1 className="mt-1">Pay</h1>
       </header>
 
-      <section className="glass glass-hero glass-pad" data-tilt>
+      <section className="glass glass-hero glass-pad">
         <p className="faint">Still to pay</p>
         <p className="num text-4xl font-bold tracking-tight">{money(grand - grandPaid, cur)}</p>
         <div className="mt-4 grid grid-cols-2 gap-3">

@@ -67,7 +67,7 @@ export function AvatarStack({
   return (
     <span className="flex items-center">
       {shown.map((p, i) => (
-        <span key={i} className="pop" style={{ marginLeft: i ? -8 : 0, ['--i' as string]: i }}>
+        <span key={i} style={{ marginLeft: i ? -8 : 0 }}>
           <Avatar name={p.name} size={size} response={p.response} />
         </span>
       ))}

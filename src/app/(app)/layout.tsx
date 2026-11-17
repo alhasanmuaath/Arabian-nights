@@ -25,10 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     me.role === 'manager'
       ? [...main, { href: '/pay-manager', label: 'Pay', icon: 'wallet' }, { href: '/people', label: 'People', icon: 'users' }]
       : [...main, { href: '/pay', label: 'My pay', icon: 'wallet' }]
-  const phone: NavLink[] = [
-    ...main,
-    { href: '/me', label: 'Me', icon: 'dots', also: ['/pay', '/pay-manager', '/people', '/notifications'] },
-  ]
+  const phone: NavLink[] = [...main, { href: '/me', label: 'Me', icon: 'dots' }]
 
   return (
     <div className="min-h-dvh">
@@ -41,14 +38,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <TopNav links={desktop} />
           <div className="flex items-center gap-2">
             <BellLink unread={count ?? 0} />
-            <Link href="/me" transitionTypes={['drill-in']} aria-label="My account" className="rounded-full">
+            <Link href="/me" aria-label="My account" className="rounded-full">
               <Avatar name={me.name} size={40} />
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="pb-tabbar mx-auto max-w-5xl px-4 pt-6">{children}</main>
+      <main className="pb-tabbar mx-auto max-w-5xl space-y-5 px-4 pt-6">{children}</main>
 
       <TabBar links={phone} />
     </div>
