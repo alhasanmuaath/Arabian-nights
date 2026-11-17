@@ -2,7 +2,7 @@
 //
 //   node --env-file=.env.local scripts/add-manager.mjs "Your Name" you@gmail.com
 //
-// Then open the app, enter that email, and type the 6-digit code you receive.
+// Then open the app's /forgot-password page, enter that email, and choose a password with the 6-digit code you receive.
 import { createClient } from '@supabase/supabase-js'
 
 const [name, emailArg] = process.argv.slice(2)
@@ -25,4 +25,4 @@ if (pErr) throw new Error(pErr.message)
 const { error: uErr } = await db.auth.admin.createUser({ email, email_confirm: true })
 if (uErr && !/already|registered|exists/i.test(uErr.message)) throw new Error(uErr.message)
 
-console.log(`${name} <${email}> is now a manager. Log in at your app's /login page.`)
+console.log(`${name} <${email}> is now a manager. Open the app's /forgot-password page to choose a password.`)

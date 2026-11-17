@@ -1,60 +1,47 @@
-'use client'
+"use client";
 
-import { useActionState } from 'react'
-import { sendCode, verifyCode, type LoginState } from './actions'
+import Link from "next/link";
+import { useFormAction } from "@/lib/useFormAction";
+import { signIn, type LoginState } from "./actions";
 
 export function LoginForm() {
-  const [emailState, emailAction, sending] = useActionState(sendCode, { step: 'email' } as LoginState)
-  const [codeState, codeAction, verifying] = useActionState(verifyCode, { step: 'code' } as LoginState)
-
-  const onCodeStep = emailState.step === 'code' && codeState.step !== 'email'
-  const email = emailState.email || ''
-
-  if (!onCodeStep) {
-    return (
-      <form action={emailAction} className="space-y-4">
-        <div>
-          <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" inputMode="email" autoComplete="email" required defaultValue={email} />
-        </div>
-        {emailState.error && (
-          <p role="alert" className="msg-error">
-            {emailState.error}
-          </p>
-        )}
-        <button className="btn btn-primary w-full" disabled={sending}>
-          {sending ? 'Sending…' : 'Send login code'}
-        </button>
-      </form>
-    )
-  }
-
+  const { state, pending, onSubmit } = useFormAction<LoginState>(signIn, null);
   return (
-    <form action={codeAction} className="space-y-4">
-      <input type="hidden" name="email" value={email} />
-      <p className="muted">{emailState.info}</p>
+    <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label htmlFor="code">6-digit code</label>
+        <label htmlFor="email">Email</label>
         <input
-          id="code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9 ]{6,8}"
+          id="email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="username"
           required
-          autoFocus
-          className="num text-center text-2xl tracking-[0.4em]"
         />
       </div>
-      {codeState.error && (
+      <div>
+        <label htmlFor="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+        />
+      </div>
+      {state?.error && (
         <p role="alert" className="msg-error">
-          {codeState.error}
+          {state.error}
         </p>
       )}
-      <button className="btn btn-primary w-full" disabled={verifying}>
-        {verifying ? 'Checking…' : 'Log in'}
+      <button className="btn btn-primary w-full" disabled={pending}>
+        {pending ? "Logging in…" : "Log in"}
       </button>
-      <p className="faint">You can also tap the link in the email instead of typing the code.</p>
+      <p className="text-center">
+        <Link href="/forgot-password" className="link text-sm">
+          Forgot password? First time here?
+        </Link>
+      </p>
     </form>
-  )
+  );
 }

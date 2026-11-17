@@ -35,10 +35,13 @@ function must(res, what) {
 }
 
 for (const p of team) must(await db.from('people').upsert(p, { onConflict: 'email' }), `person ${p.email}`)
+// every sample login uses this password (LOCAL testing only)
+const PASSWORD = 'Test-pass-123'
 const { data: list } = await db.auth.admin.listUsers({ perPage: 1000 })
 for (const p of team) {
-  if (list.users.some((u) => u.email?.toLowerCase() === p.email)) continue
-  must(await db.auth.admin.createUser({ email: p.email, email_confirm: true }), `login ${p.email}`)
+  const existing = list.users.find((u) => u.email?.toLowerCase() === p.email)
+  if (existing) must(await db.auth.admin.updateUserById(existing.id, { password: PASSWORD }), `password ${p.email}`)
+  else must(await db.auth.admin.createUser({ email: p.email, password: PASSWORD, email_confirm: true }), `login ${p.email}`)
 }
 const people = Object.fromEntries(must(await db.from('people').select('id,name'), 'read people').map((p) => [p.name, p.id]))
 
@@ -89,4 +92,4 @@ if (paid[0]) must(await db.from('pay').update({ status: 'paid' }).eq('id', paid[
 const ann = must(await db.from('announcements').insert({ title: 'Call time for Friday', body: 'Please arrive 15 minutes early.\nلو سمحتم الحضور قبل الموعد بربع ساعة.', created_by: people['Manager'] }).select('id').single(), 'announcement')
 must(await db.from('announcement_recipients').insert(['Sara', 'Hala', 'Zaid', 'Karim Photo', 'Omar Organizer'].map((n) => ({ announcement_id: ann.id, person_id: people[n] }))), 'recipients')
 
-console.log('Seeded: manager, 3 models, 1 photographer, 1 organizer, 4 shoot days')
+console.log(`Seeded: manager, 3 models, 1 photographer, 1 organizer, 4 shoot days. Password for all: ${PASSWORD}`)

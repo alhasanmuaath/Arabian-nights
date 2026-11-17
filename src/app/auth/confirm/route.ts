@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { publicOrigin } from '@/lib/origin'
 import { createClient } from '@/lib/supabase/server'
 
-// Handles the link in login / invite emails.
+// Handles the link in invitation emails. An invited person lands on the page where they choose a password.
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const origin = publicOrigin(request)
@@ -18,5 +18,6 @@ export async function GET(request: NextRequest) {
   } else if (code) {
     ok = !(await supabase.auth.exchangeCodeForSession(code)).error
   }
-  return NextResponse.redirect(ok ? `${origin}/` : `${origin}/login?error=link`)
+  const choosesPassword = type === 'invite' || type === 'recovery'
+  return NextResponse.redirect(`${origin}${ok ? (choosesPassword ? '/set-password' : '/') : '/login?error=link'}`)
 }

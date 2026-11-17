@@ -17,6 +17,7 @@ export default async function Me() {
           { href: '/pay', label: 'My pay', icon: 'wallet', note: 'Only you and the manager can see this' },
           { href: '/notifications', label: 'Notifications', icon: 'bell' },
         ]
+  links.push({ href: '/set-password', label: 'Change password', icon: 'edit', note: 'Choose a new password' })
 
   return (
     <>

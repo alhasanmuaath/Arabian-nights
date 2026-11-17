@@ -246,9 +246,16 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-[auth.email.template.magic_link]
-subject = "Shoot Scheduler: your login code"
-content_path = "./supabase/templates/magic_link.html"
+# Login is with email + password. Emails that are still sent:
+#   invite   = a link where a new person chooses their password
+#   recovery = a 6-digit code for "Forgot password"
+[auth.email.template.invite]
+subject = "Welcome to Arabian Nights: choose your password"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Arabian Nights: your password reset code"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

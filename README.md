@@ -21,6 +21,19 @@ Everything is enforced **in the database** (row-level security), not just hidden
 Decline reasons are visible only to the manager and the person who wrote them.
 Availability is no longer used; old data is kept.
 
+## Logging in
+
+People log in with **email and password**.
+- **Invitation:** the manager invites someone on People. They get an email with a link to a page where they
+  choose their password (the link works once and expires after 24 hours).
+- **Forgot password / first time (older accounts):** `/forgot-password` emails a 6-digit code. They enter the code
+  and a new password.
+- **Change password:** Me → Change password.
+
+Supabase must send the right emails. In the Supabase dashboard, go to **Authentication → Emails → Templates** and
+paste `supabase/templates/invite.html` into **Invite user** and `supabase/templates/recovery.html` into
+**Reset password**, with the subjects given in `supabase/config.toml`.
+
 ## Screens
 
 Home (next shoot, crew, answers needed, season progress, latest news) · Shoots (calendar + list) ·
@@ -65,7 +78,7 @@ npm run dev
 
 ```bash
 npx supabase start
-npm run test:db          # ~110 row-level-security and automation checks
+npm run test:db          # ~120 row-level-security and automation checks
 npm run test:migration   # legacy-shaped data survives the crew migration
 python3 tests/make-fixtures.py && npm run build && npm start   # then, in another terminal:
 npm run test:e2e         # ~50 phone-sized browser checks, one login per role

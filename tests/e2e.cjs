@@ -20,32 +20,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const main = (page) => page.locator('main').innerText()
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true })
 
-async function latestCode(email, after) {
+const PASSWORD = 'Test-pass-123'
+
+async function newMail(email, after, subjectPart) {
   for (let i = 0; i < 40; i++) {
     const r = await (await fetch(`${MAIL}/search?query=${encodeURIComponent('to:' + email)}`)).json()
-    const m = (r.messages || []).find((m) => new Date(m.Created) > after)
-    if (m) {
-      const full = await (await fetch(`${MAIL}/message/${m.ID}`)).json()
-      const code = (full.Text || full.HTML).match(/\b(\d{6})\b/)
-      if (code) return code[1]
-    }
+    const m = (r.messages || []).find((m) => new Date(m.Created) > after && (!subjectPart || m.Subject.includes(subjectPart)))
+    if (m) return await (await fetch(`${MAIL}/message/${m.ID}`)).json()
     await sleep(500)
   }
-  throw new Error('no code email for ' + email)
+  throw new Error(`no email "${subjectPart || ''}" for ${email}`)
 }
+const latestCode = async (email, after) => {
+  const full = await newMail(email, after, 'reset code')
+  return (full.Text || full.HTML).match(/\b(\d{6})\b/)[1]
+}
+const phone = (browser) => browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 
-async function login(browser, email) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+async function login(browser, email, password = PASSWORD) {
+  const ctx = await phone(browser)
   const page = await ctx.newPage()
   await page.goto(BASE + '/login')
-  const t = new Date(Date.now() - 4000)
   await page.fill('#email', email)
-  await page.click('text=Send login code')
-  await page.waitForSelector('#code')
-  await page.fill('#code', await latestCode(email, t))
+  await page.fill('#password', password)
   await page.click('button:has-text("Log in")')
   await page.waitForURL((u) => u.pathname === '/dashboard')
   return { ctx, page }
+}
+
+async function logout(page) {
+  await page.goto(BASE + '/me')
+  await page.click('button:has-text("Log out")')
+  await page.waitForURL((u) => u.pathname === '/login')
 }
 
 /** Open a <details> panel by its summary text, unless it is already open. */
@@ -62,20 +68,79 @@ async function openShoot(page, title) {
 }
 
 ;(async () => {
+  let inviteLink = ''
   const browser = await chromium.launch()
 
-  // ================= login =================
+  // ================= login page =================
   {
     const ctx = await browser.newContext()
     const page = await ctx.newPage()
     await page.goto(BASE + '/login')
+    check('login page asks for email and password (no login code)',
+      (await page.locator('#password').count()) === 1 && (await page.locator('text=Send login code').count()) === 0)
     await page.fill('#email', 'stranger@gmail.com')
-    await page.click('text=Send login code')
+    await page.fill('#password', 'whatever-123')
+    await page.click('button:has-text("Log in")')
     await page.waitForSelector('main [role=alert]')
-    check('uninvited email is refused', /not been invited/.test(await page.locator('main [role=alert]').innerText()))
+    const msg1 = await page.locator('main [role=alert]').innerText()
+    check('unknown email is refused with the generic message', /Wrong email or password/.test(msg1), msg1)
+    check('the email stays in the box after a failed login', (await page.inputValue('#email')) === 'stranger@gmail.com')
+    await page.fill('#email', 'sara@example.com')
+    await page.fill('#password', 'not-her-password')
+    await page.click('button:has-text("Log in")')
+    await page.locator('main [role=alert]', { hasText: 'Wrong email or password' }).waitFor()
+    check('a wrong password gets the same message (does not reveal which part was wrong)', true)
     await shot(page, '01-login')
     await page.goto(BASE + '/dashboard')
     check('logged-out visitor is sent to login', page.url().includes('/login'))
+    await page.goto(BASE + '/set-password')
+    check('the set-password page needs a login', page.url().includes('/login'))
+    await ctx.close()
+  }
+
+  // ================= forgot password: code by email, then a new password =================
+  {
+    const ctx = await phone(browser)
+    const page = await ctx.newPage()
+    await page.goto(BASE + '/login')
+    await page.click('a:has-text("Forgot password")')
+    await page.waitForURL(/forgot-password/)
+    const t = new Date(Date.now() - 4000)
+    await page.fill('#email', 'zaid@example.com')
+    await page.click('button:has-text("Send me a code")')
+    await page.waitForSelector('#code')
+    check('forgot password asks for the 6-digit code and a new password', (await page.locator('#password').count()) === 1 && (await page.locator('#confirm').count()) === 1)
+    const code = await latestCode('zaid@example.com', t)
+
+    await page.fill('#code', '000000')
+    await page.fill('#password', 'New-pass-456')
+    await page.fill('#confirm', 'New-pass-456')
+    await page.click('button:has-text("Save password and log in")')
+    await page.locator('main [role=alert]', { hasText: 'wrong or has expired' }).waitFor()
+    check('a wrong code is refused', true)
+    check('the typed password stays after an error', (await page.inputValue('#password')) === 'New-pass-456')
+
+    await page.fill('#code', code)
+    await page.fill('#confirm', 'New-pass-457')
+    await page.click('button:has-text("Save password and log in")')
+    await page.locator('main [role=alert]', { hasText: 'do not match' }).waitFor()
+    check('two different passwords are refused', true)
+
+    await page.fill('#confirm', 'New-pass-456')
+    await page.click('button:has-text("Save password and log in")')
+    await page.waitForURL((u) => u.pathname === '/dashboard')
+    check('the right code and a new password log the person in', /Zaid/.test(await main(page)))
+    await logout(page)
+
+    await page.fill('#email', 'zaid@example.com')
+    await page.fill('#password', PASSWORD)
+    await page.click('button:has-text("Log in")')
+    await page.locator('main [role=alert]', { hasText: 'Wrong email or password' }).waitFor()
+    check('the old password no longer works', true)
+    await page.fill('#password', 'New-pass-456')
+    await page.click('button:has-text("Log in")')
+    await page.waitForURL((u) => u.pathname === '/dashboard')
+    check('the new password works', true)
     await ctx.close()
   }
 
@@ -118,6 +183,8 @@ async function openShoot(page, title) {
     t = await main(page)
     check('model sees her own pay: 500 EGP paid', /500\s*EGP/.test(t) && /Paid/.test(t) && !/Hala/.test(t), t.slice(0, 250))
     await shot(page, '04-pay-model')
+    await page.goto(BASE + '/me')
+    check('account page offers Change password', (await page.locator('a[href="/set-password"]').count()) === 1)
 
     // announcements: only what is assigned
     await page.goto(BASE + '/announcements')
@@ -361,7 +428,60 @@ async function openShoot(page, title) {
     await page.goto(BASE + '/people')
     await page.locator('summary:has-text("Invite someone")').click()
     check('manager can invite an organizer role', (await page.locator('#new-role option[value=organizer]').count()) === 1)
+
+    // invite a new organizer: the email has a link where they choose a password
+    await page.fill('#new-name', 'Newbie Organizer')
+    await page.fill('#new-email', 'newbie@example.com')
+    await page.selectOption('#new-role', 'organizer')
+    const inviteAt = new Date(Date.now() - 4000)
+    await page.getByRole('button', { name: 'Send invitation', exact: true }).click()
+    await page.locator('main [role=status]', { hasText: 'Invitation email sent' }).waitFor()
+    const invite = await newMail('newbie@example.com', inviteAt, 'choose your password')
+    inviteLink = invite.HTML.match(/href="([^"]*auth\/confirm[^"]*)"/)[1].replace(/&amp;/g, '&')
+    check('invitation email has a link to choose a password (no code)', /type=invite/.test(inviteLink) && !/\b\d{6}\b/.test(invite.Text.replace(/\d{4,}-\d+/g, '')), inviteLink)
+
+    // "Resend invitation" for someone who already has an account sends a reset code instead
+    const saraRow = page.locator('li', { hasText: 'sara@example.com' }).first()
+    await saraRow.locator('summary:has-text("Edit")').click()
+    const resendAt = new Date(Date.now() - 2000)
+    await saraRow.locator('button:has-text("Resend invitation")').click()
+    await saraRow.locator('[role=status]', { hasText: 'already have an account' }).waitFor()
+    const resent = await newMail('sara@example.com', resendAt, 'reset code')
+    check('resending to an existing account emails a 6-digit reset code', /\b\d{6}\b/.test(resent.Text))
     await shot(page, '10-people')
+    await ctx.close()
+  }
+
+  // ================= invitation: link -> choose a password =================
+  {
+    const ctx = await phone(browser)
+    const page = await ctx.newPage()
+    await page.goto(inviteLink)
+    await page.waitForURL(/set-password/)
+    check('the invitation link opens the choose-a-password page', /Choose your password/.test(await main(page)))
+    await shot(page, '12-set-password')
+    await page.fill('#password', 'Newbie-pass-1')
+    await page.fill('#confirm', 'Newbie-pass-2')
+    await page.click('button:has-text("Save password")')
+    await page.locator('main [role=alert]', { hasText: 'do not match' }).waitFor()
+    check('the new person must type the same password twice', true)
+    await page.fill('#confirm', 'Newbie-pass-1')
+    await page.click('button:has-text("Save password")')
+    await page.waitForURL((u) => u.pathname === '/dashboard')
+    check('after choosing a password the new organizer is in', /Newbie/.test(await main(page)))
+    await logout(page)
+    await page.fill('#email', 'newbie@example.com')
+    await page.fill('#password', 'Newbie-pass-1')
+    await page.click('button:has-text("Log in")')
+    await page.waitForURL((u) => u.pathname === '/dashboard')
+    check('the new organizer can log in with email and password', true)
+
+    const again = await phone(browser)
+    const p2 = await again.newPage()
+    await p2.goto(inviteLink)
+    await p2.waitForURL(/\/login/)
+    check('an invitation link works only once', /expired or was already used/.test(await main(p2)))
+    await again.close()
     await ctx.close()
   }
 
