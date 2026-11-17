@@ -7,12 +7,12 @@ import { useEffect } from 'react'
  *  - the sky layers shift a little with the mouse (parallax)
  *  - any element marked `data-tilt` leans toward the mouse, or toward a
  *    finger while it is pressed
- * Does nothing when the device asks for reduced motion.
+ * Does nothing while motion is off (<html data-motion="off">).
  */
 export function Motion() {
   useEffect(() => {
-    if (!window.matchMedia('(prefers-reduced-motion: no-preference)').matches) return
     const root = document.documentElement
+    const motionOn = () => root.dataset.motion === 'on'
     const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches
     let frame = 0
     let x = 0
@@ -30,6 +30,10 @@ export function Motion() {
 
     const apply = () => {
       frame = 0
+      if (!motionOn()) {
+        release()
+        return
+      }
       if (canHover) {
         root.style.setProperty('--px', (x / window.innerWidth - 0.5).toFixed(3))
         root.style.setProperty('--py', (y / window.innerHeight - 0.5).toFixed(3))

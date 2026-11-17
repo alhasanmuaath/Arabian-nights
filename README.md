@@ -59,8 +59,8 @@ It is still one shoot day: one crew, one payment, and both sessions together are
 The app moves in depth. Screens turn sideways between tabs, a shoot day opens toward you and returns when you go
 back, the sky has three layers that drift at different speeds, cards lean toward the pointer or a pressed finger, and
 small things arrive with their own move (calendar leaf flip, avatars, progress bars, the sliding tab highlight).
-Only transform and opacity are animated, each move is under half a second, and all of it switches off when the
-device asks for reduced motion. The rules live at the end of `src/app/globals.css`; the screen changes are set in
+Only transform and opacity are animated, each move is under half a second. Motion follows the device (it is off when
+"reduce motion" / "animation effects" is switched off), and **Me → Motion → On** turns it on anyway for that browser. The rules live at the end of `src/app/globals.css`; the screen changes are set in
 `src/app/(app)/template.tsx`.
 
 ## Speed

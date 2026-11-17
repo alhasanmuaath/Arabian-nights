@@ -102,8 +102,8 @@
   :focus-visible { outline: 2px solid var(--color-gold-300); outline-offset: 2px; }
   input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
 
-  @media (prefers-reduced-motion: no-preference) {
-    a, button, summary, .row { transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease; }
+  :root[data-motion="on"] {
+    & a, & button, & summary, & .row { transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease; }
   }
 }
 
@@ -409,18 +409,20 @@
   );
 }
 
-@media (prefers-reduced-motion: no-preference) {
+/* Motion is on when the device allows it, or when the person turns it on in Me.
+   <html data-motion="on|off"> is set before the page paints (see layout.tsx) and by the switch. */
+:root[data-motion="on"] {
   /* ----- sky ----- */
-  .sky-stars.far { animation: sky-drift 150s linear infinite; }
-  .sky-stars.near { animation: sky-drift-near 95s linear infinite, sky-twinkle 5s ease-in-out infinite alternate; }
-  .sky-moon { animation: sky-float 16s ease-in-out infinite alternate; }
+  & .sky-stars.far { animation: sky-drift 150s linear infinite; }
+  & .sky-stars.near { animation: sky-drift-near 95s linear infinite, sky-twinkle 5s ease-in-out infinite alternate; }
+  & .sky-moon { animation: sky-float 16s ease-in-out infinite alternate; }
 
   /* ----- emblem ----- */
-  .orb-disc { animation: orb-sway 5.5s ease-in-out infinite alternate; }
-  .orb-ring { animation: orb-spin 8s linear infinite; }
+  & .orb-disc { animation: orb-sway 5.5s ease-in-out infinite alternate; }
+  & .orb-ring { animation: orb-spin 8s linear infinite; }
 
   /* ----- press + hover depth ----- */
-  .btn, .row, .chip, [data-tilt], [data-tilt]::after, .tab-pill, .tab-icon {
+  & .btn, & .row, & .chip, & [data-tilt], & [data-tilt]::after, & .tab-pill, & .tab-icon {
     transition:
       transform 0.28s var(--ease-out),
       box-shadow 0.28s var(--ease-out),
@@ -428,51 +430,51 @@
       border-color 0.16s ease,
       opacity 0.28s ease;
   }
-  .btn:active, .btn-primary:active { transition-duration: 0.06s; }
-  a.row:active { transform: scale(0.985); }
+  & .btn:active, & .btn-primary:active { transition-duration: 0.06s; }
+  & a.row:active { transform: scale(0.985); }
   @media (hover: hover) {
-    a.row:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgb(3 4 20 / 0.3); }
-    .btn:hover { transform: translateY(-1px); }
-    .btn:active, .btn-primary:active { transform: translateY(2px) scale(0.98); }
+    & a.row:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgb(3 4 20 / 0.3); }
+    & .btn:hover { transform: translateY(-1px); }
+    & .btn:active, & .btn-primary:active { transform: translateY(2px) scale(0.98); }
   }
-  .tab-pill { transition: transform 0.46s var(--ease-spring), opacity 0.2s ease; }
-  .tab-on .tab-icon { animation: tab-pop 0.5s var(--ease-spring) both; }
+  & .tab-pill { transition: transform 0.46s var(--ease-spring), opacity 0.2s ease; }
+  & .tab-on .tab-icon { animation: tab-pop 0.5s var(--ease-spring) both; }
 
   /* ----- things that arrive ----- */
-  .leaf { animation: leaf-flip 0.62s var(--ease-spring) both; transform-origin: 50% 0; }
-  .pop { animation: pop-in 0.44s var(--ease-spring) both; animation-delay: calc(var(--i, 0) * 45ms + 120ms); }
-  .bar-fill { transform-origin: 0 50%; animation: bar-grow 0.95s var(--ease-out) 0.18s both; }
-  .badge-pop { animation: pop-in 0.5s var(--ease-spring) 0.25s both; }
-  details[open] > :not(summary) { animation: unfold 0.34s var(--ease-out) both; transform-origin: 50% 0; }
-  .msg-ok, .msg-error { animation: msg-in 0.3s var(--ease-out) both; }
-  .chip-wait .dot { animation: dot-pulse 1.8s ease-in-out infinite; }
+  & .leaf { animation: leaf-flip 0.62s var(--ease-spring) both; transform-origin: 50% 0; }
+  & .pop { animation: pop-in 0.44s var(--ease-spring) both; animation-delay: calc(var(--i, 0) * 45ms + 120ms); }
+  & .bar-fill { transform-origin: 0 50%; animation: bar-grow 0.95s var(--ease-out) 0.18s both; }
+  & .badge-pop { animation: pop-in 0.5s var(--ease-spring) 0.25s both; }
+  & details[open] > :not(summary) { animation: unfold 0.34s var(--ease-out) both; transform-origin: 50% 0; }
+  & .msg-ok, & .msg-error { animation: msg-in 0.3s var(--ease-out) both; }
+  & .chip-wait .dot { animation: dot-pulse 1.8s ease-in-out infinite; }
 
   /* ----- moving between screens (see app/(app)/template.tsx) ----- */
-  ::view-transition { pointer-events: none; } /* taps still reach the app while a screen is changing */
+  &::view-transition { pointer-events: none; } /* taps still reach the app while a screen is changing */
 
   /* default: the old screen sinks back, the new one rises forward */
-  ::view-transition-old(.sink) { animation: 0.13s var(--ease-in) both vt-sink; transform-origin: 50% 20rem; }
-  ::view-transition-new(.rise) { animation: 0.42s var(--ease-out) 0.1s both vt-rise; transform-origin: 50% 20rem; }
+  &::view-transition-old(.sink) { animation: 0.13s var(--ease-in) both vt-sink; transform-origin: 50% 20rem; }
+  &::view-transition-new(.rise) { animation: 0.42s var(--ease-out) 0.1s both vt-rise; transform-origin: 50% 20rem; }
 
   /* tabs: screens turn like the faces of a box */
-  ::view-transition-old(.out-left)  { animation: 0.15s var(--ease-in) both vt-out-left; }
-  ::view-transition-new(.in-right)  { animation: 0.42s var(--ease-out) 0.11s both vt-in-right; }
-  ::view-transition-old(.out-right) { animation: 0.15s var(--ease-in) both vt-out-right; }
-  ::view-transition-new(.in-left)   { animation: 0.42s var(--ease-out) 0.11s both vt-in-left; }
+  &::view-transition-old(.out-left) { animation: 0.15s var(--ease-in) both vt-out-left; }
+  &::view-transition-new(.in-right) { animation: 0.42s var(--ease-out) 0.11s both vt-in-right; }
+  &::view-transition-old(.out-right) { animation: 0.15s var(--ease-in) both vt-out-right; }
+  &::view-transition-new(.in-left) { animation: 0.42s var(--ease-out) 0.11s both vt-in-left; }
 
   /* opening something: push the list away, the detail comes from the front */
-  ::view-transition-old(.push-back)  { animation: 0.14s var(--ease-in) both vt-push-back; transform-origin: 50% 20rem; }
-  ::view-transition-new(.from-front) { animation: 0.42s var(--ease-out) 0.1s both vt-from-front; transform-origin: 50% 20rem; }
+  &::view-transition-old(.push-back) { animation: 0.14s var(--ease-in) both vt-push-back; transform-origin: 50% 20rem; }
+  &::view-transition-new(.from-front) { animation: 0.42s var(--ease-out) 0.1s both vt-from-front; transform-origin: 50% 20rem; }
   /* going back: the detail drops toward you, the list returns from behind */
-  ::view-transition-old(.to-front)   { animation: 0.14s var(--ease-in) both vt-to-front; transform-origin: 50% 20rem; }
-  ::view-transition-new(.from-back)  { animation: 0.42s var(--ease-out) 0.1s both vt-from-back; transform-origin: 50% 20rem; }
+  &::view-transition-old(.to-front) { animation: 0.14s var(--ease-in) both vt-to-front; transform-origin: 50% 20rem; }
+  &::view-transition-new(.from-back) { animation: 0.42s var(--ease-out) 0.1s both vt-from-back; transform-origin: 50% 20rem; }
 }
 
-/* Reduced motion: screens change with a very short fade, nothing moves. */
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
+/* Motion off: screens change with a very short fade, nothing moves. */
+:root[data-motion="off"] {
+  &::view-transition-group(*),
+  &::view-transition-old(*),
+  &::view-transition-new(*) {
     animation-duration: 0.1s !important;
     animation-delay: 0s !important;
   }
