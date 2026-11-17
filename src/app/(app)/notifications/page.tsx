@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Icon } from '@/components/Icon'
 import { fmtStamp } from '@/lib/dates'
-import { requireRole } from '@/lib/session'
+import { getSupabase, requireRole } from '@/lib/session'
 import { markAllNotificationsRead, markNotificationRead } from '../actions'
 
 type Notification = {
@@ -15,14 +15,16 @@ type Notification = {
 }
 
 export default async function NotificationsPage() {
-  const { supabase, me } = await requireRole()
-  const { data, error } = await supabase
+  const supabase = await getSupabase()
+  const [, { data, error }] = await Promise.all([
+    requireRole(),
+    supabase
     .from('notifications')
     .select('id, title, message, type, link, is_read, created_at')
-    .eq('person_id', me.id)
     .order('is_read', { ascending: true })
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(100),
+  ])
   const items = (data ?? []) as Notification[]
   const unread = items.filter((n) => !n.is_read).length
 

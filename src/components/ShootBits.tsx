@@ -51,6 +51,7 @@ export function ShootRow({
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="truncate font-semibold">{day.title || 'Shoot day'}</span>
           {day.status !== 'planned' && <StatusBadge status={day.status} />}
+          {day.second_start_time && <span className="chip chip-info">2 sessions</span>}
         </span>
         <span className="faint mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
           {day.status === 'planned' && <span className="text-ink-2">{relDay(day.date, today)}</span>}

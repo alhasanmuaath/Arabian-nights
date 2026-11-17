@@ -61,7 +61,8 @@ const days = [
     location_name: 'Arabian Night camp', location_address: 'Desert road, 6th of October', location_url: 'https://maps.app.goo.gl/example',
     notes: 'Bring two outfits. Photographer: golden hour from 17:30.',
     crew: ['Sara', 'Hala', 'Zaid', 'Karim Photo', 'Omar Organizer'] },
-  { date: '2026-11-24', title: 'Majlis interior', start_time: '12:00', hours: 4, videos_planned: 3, status: 'planned', crew: ['Hala', 'Zaid'] },
+  // a split day: 2 h in the morning + 2 h in the evening
+  { date: '2026-11-24', title: 'Majlis interior', start_time: '10:00', hours: 4, second_start_time: '18:00', second_hours: 2, videos_planned: 3, status: 'planned', crew: ['Hala', 'Zaid'] },
   { date: '2026-12-01', title: 'Night market', start_time: '19:00', hours: 4, videos_planned: 4, status: 'planned', crew: [] },
 ]
 for (const { crew, ...d } of days) {

@@ -5,7 +5,7 @@ import { Panel } from '@/components/Panel'
 import { SmallAction } from '@/components/SmallAction'
 import { getFeedback, getTeam } from '@/lib/data'
 import { fmtSize, fmtStamp } from '@/lib/dates'
-import { canEditAll, requireRole, seesEverything } from '@/lib/session'
+import { canEditAll, getSupabase, requireRole, seesEverything } from '@/lib/session'
 import { deleteSharedFile } from '../actions'
 
 type SharedFile = {
@@ -18,16 +18,17 @@ type SharedFile = {
 }
 
 export default async function FilesPage() {
-  const { supabase, me } = await requireRole()
-  const canManage = canEditAll(me)
+  const supabase = await getSupabase()
 
-  const [team, listRes] = await Promise.all([
+  const [{ me }, team, listRes] = await Promise.all([
+    requireRole(),
     getTeam(supabase),
     supabase
       .from('shared_files')
       .select('id, name, description, size_bytes, uploaded_by, created_at')
       .order('created_at', { ascending: false }),
   ])
+  const canManage = canEditAll(me)
   const files = (listRes.data ?? []) as SharedFile[]
   const feedback = await getFeedback(supabase, 'file', files.map((f) => f.id))
   const others = [...team.values()].filter((p) => p.id !== me.id)

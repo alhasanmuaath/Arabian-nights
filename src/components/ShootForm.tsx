@@ -3,6 +3,7 @@ import { fmtDate, fmtTime } from '@/lib/dates'
 import type { ShootDay, TeamMember } from '@/lib/types'
 import { ActionForm, SubmitButton } from './ActionForm'
 import { PeopleChecklist } from './AudiencePicker'
+import { SessionFields } from './SessionFields'
 
 /** Manager: create a shoot day, or edit its details. */
 export function ShootForm({
@@ -37,14 +38,13 @@ export function ShootForm({
           <label htmlFor={`${p}title`}>Name of the shoot</label>
           <input id={`${p}title`} name="title" maxLength={120} defaultValue={day?.title ?? ''} placeholder="e.g. Sunset camp scenes" />
         </div>
-        <div>
-          <label htmlFor={`${p}start`}>Shooting starts (Cairo)</label>
-          <input id={`${p}start`} name="start_time" type="time" defaultValue={fmtTime(day?.start_time ?? null)} />
-        </div>
-        <div>
-          <label htmlFor={`${p}hours`}>Hours (max 4)</label>
-          <input id={`${p}hours`} name="hours" type="number" min={0.5} max={4} step={0.5} defaultValue={day?.hours ?? 4} required />
-        </div>
+        <SessionFields
+          idPrefix={p}
+          startTime={fmtTime(day?.start_time ?? null)}
+          totalHours={Number(day?.hours ?? 4)}
+          secondStartTime={fmtTime(day?.second_start_time ?? null)}
+          secondHours={day?.second_hours ? Number(day.second_hours) : null}
+        />
         <div>
           <label htmlFor={`${p}videos`}>Videos planned</label>
           <input id={`${p}videos`} name="videos_planned" type="number" min={0} defaultValue={day?.videos_planned ?? 4} required />

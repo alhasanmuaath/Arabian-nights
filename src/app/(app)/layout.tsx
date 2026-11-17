@@ -3,18 +3,17 @@ import { redirect } from 'next/navigation'
 import { Avatar } from '@/components/Avatar'
 import { Icon } from '@/components/Icon'
 import { BellLink, TabBar, TopNav, type NavLink } from '@/components/Nav'
-import { getMe } from '@/lib/session'
+import { getMe, getSupabase } from '@/lib/session'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { supabase, user, me } = await getMe()
+  const supabase = await getSupabase()
+  // Both run at the same time. Row-level security only returns the caller's own notifications.
+  const [{ user, me }, { count }] = await Promise.all([
+    getMe(),
+    supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_read', false),
+  ])
   if (!user) redirect('/login')
   if (!me) redirect('/no-access')
-
-  const { count } = await supabase
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-    .eq('person_id', me.id)
-    .eq('is_read', false)
 
   const main: NavLink[] = [
     { href: '/dashboard', label: 'Home', icon: 'home' },

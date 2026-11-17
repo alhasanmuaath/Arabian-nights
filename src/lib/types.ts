@@ -44,6 +44,9 @@ export type ShootDay = {
   location_url: string | null
   meeting_point: string | null
   meeting_time: string | null
+  /** Second session of a split day (null = one session). `hours` is the total of both. */
+  second_start_time: string | null
+  second_hours: number | null
 }
 
 export type Attendee = {

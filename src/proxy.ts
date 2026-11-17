@@ -19,9 +19,9 @@ export async function proxy(request: NextRequest) {
     },
   })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Verified locally (signature check, no network). Also refreshes an expired token.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims ?? null
 
   const path = request.nextUrl.pathname
   const isPublic = path.startsWith('/login') || path.startsWith('/auth')

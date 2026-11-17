@@ -6,19 +6,20 @@ import { Panel } from '@/components/Panel'
 import { SmallAction } from '@/components/SmallAction'
 import { getFeedback, getTeam } from '@/lib/data'
 import { fmtStamp } from '@/lib/dates'
-import { canEditAll, requireRole, seesEverything } from '@/lib/session'
+import { canEditAll, getSupabase, requireRole, seesEverything } from '@/lib/session'
 import { createAnnouncement, deleteAnnouncement } from '../actions'
 
 type Announcement = { id: string; title: string; body: string; created_by: string; created_at: string }
 
 export default async function AnnouncementsPage() {
-  const { supabase, me } = await requireRole()
-  const canManage = canEditAll(me)
+  const supabase = await getSupabase()
 
-  const [team, listRes] = await Promise.all([
+  const [{ me }, team, listRes] = await Promise.all([
+    requireRole(),
     getTeam(supabase),
     supabase.from('announcements').select('id, title, body, created_by, created_at').order('created_at', { ascending: false }),
   ])
+  const canManage = canEditAll(me)
   const items = (listRes.data ?? []) as Announcement[]
   const feedback = await getFeedback(supabase, 'announcement', items.map((a) => a.id))
   const others = [...team.values()].filter((p) => p.id !== me.id)

@@ -277,6 +277,28 @@ select pg_temp.check('crew edits keep custom amounts (runs)',
 select pg_temp.check('crew edits keep custom amounts (result)',
   (select amount = 650 from pay where person_id = (select id from people where email = 'photo@t.test') and shoot_day_id = 'aaaaaaaa-0000-0000-0000-00000000000a'));
 
+-- split days: two sessions, one day (total at most 4 h)
+select pg_temp.check('a split day is accepted (runs)',
+  pg_temp.raises($q$update shoot_days set start_time = '10:00', hours = 4, second_start_time = '18:00', second_hours = 2 where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
+select pg_temp.check('a split day is stored: 2 h + 2 h',
+  (select hours = 4 and second_hours = 2 and second_start_time = '18:00' from shoot_days where id = 'cccccccc-0000-0000-0000-00000000000c'));
+select pg_temp.check('second session cannot start before the first ends',
+  pg_temp.raises($q$update shoot_days set second_start_time = '11:00' where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_split_check%');
+select pg_temp.check('second session must be shorter than the whole day',
+  pg_temp.raises($q$update shoot_days set second_hours = 4 where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_split_check%');
+select pg_temp.check('both second-session fields go together (no start time)',
+  pg_temp.raises($q$update shoot_days set second_start_time = null where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_split_check%');
+select pg_temp.check('both second-session fields go together (no hours)',
+  pg_temp.raises($q$update shoot_days set second_hours = null where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_split_check%');
+select pg_temp.check('a split day needs a first start time',
+  pg_temp.raises($q$update shoot_days set start_time = null where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%shoot_days_split_check%');
+select pg_temp.check('total of a split day is still at most 4 h',
+  pg_temp.raises($q$update shoot_days set hours = 5 where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) like '%check constraint%');
+select pg_temp.check('a split day can go back to one session',
+  pg_temp.raises($q$update shoot_days set second_start_time = null, second_hours = null where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
+select pg_temp.check('a split can be added again for the notification check',
+  pg_temp.raises($q$update shoot_days set second_start_time = '19:00', second_hours = 1 where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
+
 -- cancel Day C (crew told: checked below as superuser, managers cannot read others' notifications)
 select pg_temp.check('cancelling Day C (runs)',
   pg_temp.raises($q$update shoot_days set status = 'cancelled' where id = 'cccccccc-0000-0000-0000-00000000000c'$q$) is null);
@@ -290,6 +312,8 @@ select pg_temp.check('manager deletes a comment by anyone (result)',
   (select count(*) = 0 from comments where target_type = 'announcement' and person_id = (select id from people where email = 'sara@t.test')));
 reset role;
 
+select pg_temp.check('changing the sessions told the crew (Sara and Photo, three times: split, undo, split again)',
+  (select count(*) = 6 from notifications where message like 'Sat 28 Nov%Date, time, meeting point or location changed%'));
 select pg_temp.check('cancelling Day C told the crew (Sara and Photo)',
   (select count(*) = 2 from notifications where message like '%was cancelled%'));
 select pg_temp.check('comments notified the manager and the item owner',

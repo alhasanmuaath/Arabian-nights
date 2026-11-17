@@ -11,8 +11,8 @@ import { ShootForm } from '@/components/ShootForm'
 import { SmallAction } from '@/components/SmallAction'
 import { StatusBadge } from '@/components/StatusBadge'
 import { getFeedback, getTeam, signUrls } from '@/lib/data'
-import { cairoToday, fmtDateLong, fmtHours, fmtSize, fmtStamp, fmtTime, relDay, seasonDates } from '@/lib/dates'
-import { ROLE_LABEL, canEditAll, canEditLocation, getTargets, requireRole } from '@/lib/session'
+import { cairoToday, fmtDateLong, fmtHours, fmtSize, fmtStamp, fmtTime, relDay, seasonDates, sessionsOf } from '@/lib/dates'
+import { ROLE_LABEL, canEditAll, canEditLocation, getSupabase, getTargets, requireRole } from '@/lib/session'
 import type { Asset, Attendee, ShootDay } from '@/lib/types'
 import {
   addCrew,
@@ -31,24 +31,25 @@ type Fee = { person_id: string; amount: number }
 
 export default async function ShootPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { supabase, me } = await requireRole()
-  const isManager = me.role === 'manager'
-  const canEdit = canEditAll(me)
-  const canPlace = canEditLocation(me)
+  const supabase = await getSupabase()
   const today = cairoToday()
 
-  const { data: dayRow } = await supabase.from('shoot_days').select('*').eq('id', id).maybeSingle<ShootDay>()
-  if (!dayRow) notFound()
-  const day = dayRow
-
-  const [targets, team, crewRes, assetsRes, reasonsRes, feesRes] = await Promise.all([
+  // One round of queries, all at once. Row-level security decides what each person gets back.
+  const [{ me }, dayRes, targets, team, crewRes, assetsRes, reasonsRes, feesRes] = await Promise.all([
+    requireRole(),
+    supabase.from('shoot_days').select('*').eq('id', id).maybeSingle<ShootDay>(),
     getTargets(),
     getTeam(supabase),
     supabase.from('shoot_attendees').select('*').eq('shoot_day_id', id),
     supabase.from('shoot_assets').select('*').eq('shoot_day_id', id).order('created_at'),
     supabase.from('shoot_decline_reasons').select('attendee_id, reason'),
-    isManager ? supabase.from('shoot_fees').select('person_id, amount').eq('shoot_day_id', id) : Promise.resolve({ data: [] }),
+    supabase.from('shoot_fees').select('person_id, amount').eq('shoot_day_id', id),
   ])
+  if (!dayRes.data) notFound()
+  const day = dayRes.data
+  const isManager = me.role === 'manager'
+  const canEdit = canEditAll(me)
+  const canPlace = canEditLocation(me)
   const attendees = (crewRes.data ?? []) as Attendee[]
   const assets = (assetsRes.data ?? []) as Asset[]
   const reasons = new Map(((reasonsRes.data ?? []) as Reason[]).map((r) => [r.attendee_id, r.reason]))
@@ -98,12 +99,16 @@ export default async function ShootPage({ params }: { params: Promise<{ id: stri
         </div>
 
         <ul className="mt-4 flex flex-wrap gap-2">
-          {day.start_time && (
-            <li className="chip">
-              <Icon name="clock" size={13} /> Shooting from {fmtTime(day.start_time)}
+          {sessionsOf(day).map((s, i, all) => (
+            <li key={i} className="chip">
+              <Icon name="clock" size={13} /> {all.length > 1 ? `Session ${i + 1}: ` : 'Shooting '}
+              {s.start}–{s.end}
             </li>
-          )}
-          <li className="chip">{fmtHours(day.hours)}</li>
+          ))}
+          <li className="chip">
+            {fmtHours(day.hours)}
+            {day.second_start_time ? ' in total' : ''}
+          </li>
           <li className="chip">
             <Icon name="video" size={13} /> {day.videos_planned} video{day.videos_planned === 1 ? '' : 's'}
           </li>

@@ -4,7 +4,7 @@ import { ShootRow } from '@/components/ShootBits'
 import { ShootForm } from '@/components/ShootForm'
 import { getTeam } from '@/lib/data'
 import { cairoToday, dayNum, fmtDate, fmtDateShort, seasonDates, weekday } from '@/lib/dates'
-import { canEditAll, getTargets, requireRole } from '@/lib/session'
+import { canEditAll, getSupabase, getTargets, requireRole } from '@/lib/session'
 import type { Attendee, ShootDay } from '@/lib/types'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -15,17 +15,18 @@ const DOT: Record<ShootDay['status'], string> = {
 }
 
 export default async function Shoots({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
-  const { supabase, me } = await requireRole()
-  const canEdit = canEditAll(me)
+  const supabase = await getSupabase()
   const today = cairoToday()
   const { date: picked } = await searchParams
 
-  const [targets, team, daysRes, crewRes] = await Promise.all([
+  const [{ me }, targets, team, daysRes, crewRes] = await Promise.all([
+    requireRole(),
     getTargets(),
     getTeam(supabase),
     supabase.from('shoot_days').select('*').order('date').order('start_time'),
     supabase.from('shoot_attendees').select('*'),
   ])
+  const canEdit = canEditAll(me)
   const days = (daysRes.data ?? []) as ShootDay[]
   const attendees = (crewRes.data ?? []) as Attendee[]
   const dates = seasonDates(targets.season_start, targets.season_end)

@@ -1,10 +1,24 @@
 'use client'
 
-import Link from 'next/link'
+import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Icon, type IconName } from './Icon'
 
 export type NavLink = { href: string; label: string; icon: IconName; external?: boolean }
+
+/**
+ * Tiny gold pulse inside a tab while its page is still loading. Only
+ * visible when the page was not already prefetched (slow network).
+ */
+function Pending() {
+  const { pending } = useLinkStatus()
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute inset-x-3 bottom-0.5 h-0.5 rounded-full bg-gold-300 motion-safe:animate-pulse ${pending ? 'opacity-100' : 'opacity-0'}`}
+    />
+  )
+}
 
 function isActive(path: string, href: string) {
   return path === href || path.startsWith(href + '/')
@@ -26,9 +40,10 @@ export function TopNav({ links }: { links: NavLink[] }) {
             {l.label}
           </a>
         ) : (
-          <Link key={l.href} href={l.href} aria-current={active ? 'page' : undefined} className={cls}>
+          <Link key={l.href} href={l.href} prefetch aria-current={active ? 'page' : undefined} className={`relative ${cls}`}>
             <Icon name={l.icon} size={16} className={active ? 'text-gold-300' : ''} />
             {l.label}
+            <Pending />
           </Link>
         )
       })}
@@ -51,13 +66,15 @@ export function TabBar({ links }: { links: NavLink[] }) {
           <Link
             key={l.href}
             href={l.href}
+            prefetch
             aria-current={active ? 'page' : undefined}
-            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[1.25rem] px-1 py-2 text-[11px] font-medium ${
+            className={`relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[1.25rem] px-1 py-2 text-[11px] font-medium ${
               active ? 'bg-white/14 text-ink' : 'text-ink-3'
             }`}
           >
             <Icon name={l.icon} size={20} className={active ? 'text-gold-300' : ''} />
             <span className="truncate">{l.label}</span>
+            <Pending />
           </Link>
         )
       })}

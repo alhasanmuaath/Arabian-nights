@@ -6,8 +6,8 @@ import { ProgressBar } from '@/components/ProgressBar'
 import { DateBlock, RespondBox, ShootRow, crewOf } from '@/components/ShootBits'
 import { StatusBadge } from '@/components/StatusBadge'
 import { getTeam } from '@/lib/data'
-import { cairoHour, cairoToday, fmtDateLong, fmtStamp, fmtTime, relDay } from '@/lib/dates'
-import { ROLE_LABEL, getTargets, requireRole } from '@/lib/session'
+import { cairoHour, cairoToday, fmtDateLong, fmtStamp, fmtTime, relDay, sessionsLabel } from '@/lib/dates'
+import { ROLE_LABEL, getSupabase, getTargets, requireRole } from '@/lib/session'
 import type { Attendee, ShootDay, Targets, TeamMember } from '@/lib/types'
 import { updateTargets } from '../actions'
 
@@ -15,18 +15,20 @@ type Reason = { attendee_id: string; reason: string }
 type News = { id: string; title: string; body: string; created_at: string }
 
 export default async function Dashboard() {
-  const { supabase, me } = await requireRole()
-  const isManager = me.role === 'manager'
+  const supabase = await getSupabase()
   const today = cairoToday()
 
-  const [targets, team, daysRes, crewRes, newsRes, reasonsRes] = await Promise.all([
+  // Everything starts at once. Row-level security decides what each person gets back.
+  const [{ me }, targets, team, daysRes, crewRes, newsRes, reasonsRes] = await Promise.all([
+    requireRole(),
     getTargets(),
     getTeam(supabase),
     supabase.from('shoot_days').select('*').order('date').order('start_time'),
     supabase.from('shoot_attendees').select('*'),
     supabase.from('announcements').select('id, title, body, created_at').order('created_at', { ascending: false }).limit(3),
-    isManager ? supabase.from('shoot_decline_reasons').select('attendee_id, reason') : Promise.resolve({ data: [] }),
+    supabase.from('shoot_decline_reasons').select('attendee_id, reason'),
   ])
+  const isManager = me.role === 'manager'
   const days = (daysRes.data ?? []) as ShootDay[]
   const attendees = (crewRes.data ?? []) as Attendee[]
   const news = (newsRes.data ?? []) as News[]
@@ -268,7 +270,7 @@ function NextShoot({
             <dt className="faint">Location</dt>
             <dd className="font-medium">
               {day.location_name || 'To be confirmed'}
-              {day.start_time && <span className="muted block font-normal">Shooting from {fmtTime(day.start_time)}</span>}
+              {day.start_time && <span className="muted block font-normal">Shooting {sessionsLabel(day)}</span>}
             </dd>
           </div>
         </div>

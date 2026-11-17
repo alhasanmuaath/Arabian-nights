@@ -3,13 +3,26 @@ import { redirect } from 'next/navigation'
 import { createClient } from './supabase/server'
 import type { Person, Role, Targets } from './types'
 
-/** The logged-in user and their people row (null if not invited). */
+/**
+ * One Supabase client per request, shared by the layout and the page, so
+ * both can start their queries at the same time.
+ */
+export const getSupabase = cache(async () => createClient())
+
+/**
+ * The logged-in user and their people row (null if not invited).
+ *
+ * The login is checked with getClaims(): the token's signature is verified
+ * on the server with the project's public key, with no round trip to the
+ * auth service. (That round trip, repeated for every request, was the
+ * biggest part of the lag.)
+ */
 export const getMe = cache(async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { supabase, user: null, me: null }
+  const supabase = await getSupabase()
+  const { data } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (!claims?.sub) return { supabase, user: null, me: null }
+  const user = { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined }
   const { data: me } = await supabase.from('people').select('*').eq('user_id', user.id).maybeSingle<Person>()
   return { supabase, user, me }
 })
@@ -24,7 +37,7 @@ export async function requireRole(...roles: Role[]) {
 }
 
 export const getTargets = cache(async () => {
-  const supabase = await createClient()
+  const supabase = await getSupabase()
   const { data } = await supabase.from('targets').select('*').eq('id', 1).single<Targets>()
   return data!
 })

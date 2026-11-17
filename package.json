@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql",
+    "test:db": "npx supabase db reset >/dev/null 2>&1 && psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql",
     "test:e2e": "bash tests/reset-local.sh && node tests/e2e.cjs",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
     "add-manager": "node --env-file=.env.local scripts/add-manager.mjs",

@@ -27,6 +27,17 @@ Home (next shoot, crew, answers needed, season progress, latest news) · Shoots 
 Shoot day (meeting point and time, location and map link, photos, scripts, crew, comments) ·
 News · Files · My pay / Pay (manager) · People (manager) · Notifications · Me.
 
+## Split shoot days
+
+A shoot day can run in two sessions, for example 2 hours in the morning and 2 hours in the evening. Tick
+"Split into two sessions" when creating or editing a shoot day and give each session a start time and hours.
+It is still one shoot day: one crew, one payment, and both sessions together are at most 4 hours.
+
+## Speed
+
+Logins are verified on the server without calling the auth service on every click, pages fetch their data in one
+round of queries, the main sections are prefetched, and `vercel.json` runs the server in Frankfurt next to the database.
+
 ## Pay
 
 Marking a shoot day **completed** adds a pay line for each model who did not decline (the day rate) and for

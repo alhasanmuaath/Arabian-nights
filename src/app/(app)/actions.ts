@@ -18,6 +18,7 @@ function friendly(message: string): string {
   if (/shoot_attendees_shoot_day_id_person_id_key/.test(message)) return 'That person is already on the crew list.'
   if (/shoot_days_location_url_check/.test(message)) return 'The map link must start with https://'
   if (/hours_check/.test(message)) return 'Shoot hours must be more than 0 and at most 4.'
+  if (/shoot_days_split_check/.test(message)) return 'The second session must start after the first ends, and both together can be at most 4 hours.'
   if (/comments_body_check/.test(message)) return 'Write a comment of up to 2000 characters.'
   return message
 }
@@ -42,12 +43,37 @@ function cleanUrl(raw: string): string | null {
 // =====================================================================
 // SHOOT DAYS (manager)
 // =====================================================================
+const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+
+/**
+ * Reads the shoot-day form. A split day (two sessions) stores the TOTAL in
+ * `hours` and the second session in second_start_time / second_hours.
+ */
 function shootFields(fd: FormData) {
+  const split = str(fd, 'split') === 'yes'
+  const firstHours = num(fd, 'hours') || 4
+  const secondHours = split ? num(fd, 'second_hours') : 0
+  const start_time = str(fd, 'start_time') || null
+  const second_start_time = split ? str(fd, 'second_start_time') || null : null
+
+  let error: string | null = null
+  if (split) {
+    if (!start_time || !second_start_time) error = 'Enter a start time for both sessions.'
+    else if (!(secondHours > 0) || !(firstHours > 0)) error = 'Both sessions need some hours.'
+    else if (firstHours + secondHours > 4) error = 'Both sessions together can be at most 4 hours.'
+    else if (minutes(second_start_time) < minutes(start_time) + firstHours * 60) {
+      error = 'The second session must start after the first one ends.'
+    }
+  }
+
   return {
+    error,
     date: str(fd, 'date'),
     title: str(fd, 'title') || null,
-    start_time: str(fd, 'start_time') || null,
-    hours: num(fd, 'hours') || 4,
+    start_time,
+    hours: split ? firstHours + secondHours : firstHours,
+    second_start_time,
+    second_hours: split ? secondHours : null,
     videos_planned: Math.max(0, Math.floor(num(fd, 'videos_planned') || 0)),
     meeting_time: str(fd, 'meeting_time') || null,
     meeting_point: str(fd, 'meeting_point') || null,
@@ -60,7 +86,8 @@ function shootFields(fd: FormData) {
 
 export async function createShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
-  const fields = shootFields(fd)
+  const { error: formError, ...fields } = shootFields(fd)
+  if (formError) return { error: formError }
   if (!fields.date) return { error: 'Pick a date.' }
 
   const { data: day, error } = await supabase.from('shoot_days').insert(fields).select('id').single()
@@ -83,7 +110,9 @@ export async function createShoot(_p: ActionState, fd: FormData): Promise<Action
 export async function updateShoot(_p: ActionState, fd: FormData): Promise<ActionState> {
   const { supabase } = await session()
   const status = str(fd, 'status')
-  const patch = { ...shootFields(fd), ...(status ? { status } : {}) }
+  const { error: formError, ...fields } = shootFields(fd)
+  if (formError) return { error: formError }
+  const patch = { ...fields, ...(status ? { status } : {}) }
   const { data, error } = await supabase.from('shoot_days').update(patch).eq('id', str(fd, 'id')).select('id')
   if (error) return { error: friendly(error.message) }
   if (!data?.length) return { error: NO }

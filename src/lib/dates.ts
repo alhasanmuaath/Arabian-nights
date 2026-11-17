@@ -57,6 +57,46 @@ export function fmtStamp(ts: string) {
   })
 }
 
+const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const fromMinutes = (m: number) => {
+  const x = ((Math.round(m) % 1440) + 1440) % 1440
+  return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
+}
+
+export type Session = { start: string; end: string; hours: number }
+
+/**
+ * The time blocks of a shoot day: one, or two when the day is split
+ * (for example 2 h in the morning and 2 h in the evening).
+ */
+export function sessionsOf(day: {
+  start_time: string | null
+  hours: number
+  second_start_time: string | null
+  second_hours: number | null
+}): Session[] {
+  if (!day.start_time) return []
+  const total = Number(day.hours)
+  if (day.second_start_time && day.second_hours) {
+    const second = Number(day.second_hours)
+    const first = total - second
+    return [
+      { start: fmtTime(day.start_time), end: fromMinutes(toMinutes(day.start_time) + first * 60), hours: first },
+      { start: fmtTime(day.second_start_time), end: fromMinutes(toMinutes(day.second_start_time) + second * 60), hours: second },
+    ]
+  }
+  return [{ start: fmtTime(day.start_time), end: fromMinutes(toMinutes(day.start_time) + total * 60), hours: total }]
+}
+
+/** "16:00–20:00" or "10:00–12:00 + 18:00–20:00". */
+export function sessionsLabel(day: Parameters<typeof sessionsOf>[0]): string {
+  return sessionsOf(day)
+    .map((s) => `${s.start}–${s.end}`)
+    .join(' + ')
+}
+
+export { toMinutes }
+
 export function fmtHours(n: number) {
   return `${Math.round(Number(n) * 100) / 100} h`
 }
