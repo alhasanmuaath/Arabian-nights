@@ -25,14 +25,15 @@ Availability is no longer used; old data is kept.
 
 People log in with **email and password**.
 - **Invitation:** the manager invites someone on People. They get an email with a link to a page where they
-  choose their password (the link works once and expires after 24 hours).
+  choose their password (the link works once; see the email-expiry setting below).
 - **Forgot password / first time (older accounts):** `/forgot-password` emails a 6-digit code. They enter the code
   and a new password.
 - **Change password:** Me → Change password.
 
 Supabase must send the right emails. In the Supabase dashboard, go to **Authentication → Emails → Templates** and
 paste `supabase/templates/invite.html` into **Invite user** and `supabase/templates/recovery.html` into
-**Reset password**, with the subjects given in `supabase/config.toml`.
+**Reset password**, with the subjects given in `supabase/config.toml`. Also set **Authentication → Sign In / Providers →
+Email → Email OTP Expiration** to `86400` (24 hours), otherwise invitation links stop working after 1 hour.
 
 ## Screens
 
