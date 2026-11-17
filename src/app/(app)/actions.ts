@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { sendInvitation } from '@/lib/auth-mail'
+import { testEmail } from '@/lib/emails'
+import { describeMailError, mailConfigured, mailDnsCheck, mailSettingsText, sendMail } from '@/lib/mail'
 import { originFromHeaders } from '@/lib/origin'
 import { canEditAll, getMe } from '@/lib/session'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -613,4 +615,33 @@ export async function markAllNotificationsRead() {
   const { supabase, me } = await session()
   await supabase.from('notifications').update({ is_read: true }).eq('person_id', me.id).eq('is_read', false)
   revalidatePath('/', 'layout')
+}
+
+// ---------- email check (manager) ----------
+/** Sends a test email to the manager and reports exactly what the mail server said. */
+export async function sendTestEmail(): Promise<ActionState> {
+  const { me } = await session()
+  if (me.role !== 'manager') return { error: 'Only the manager can do this.' }
+  if (!mailConfigured()) {
+    return {
+      error:
+        'The app has no mail settings, so Supabase sends the emails (with the templates saved in the Supabase dashboard). Add SMTP_HOST and SMTP_FROM in Vercel (and SMTP_USER, SMTP_PASS, SMTP_PORT), then redeploy.',
+    }
+  }
+  try {
+    await sendMail(me.email, testEmail())
+  } catch (e) {
+    return { error: `The mail server refused it: ${describeMailError(e)}. Settings the app sees: ${mailSettingsText()}.` }
+  }
+  const domain = (process.env.SMTP_FROM ?? '').match(/@([^>\s]+)/)?.[1] ?? ''
+  const dns = domain ? await mailDnsCheck(domain) : null
+  const mark = (ok: boolean) => (ok ? 'found' : 'MISSING')
+  return {
+    ok:
+      `Test email sent to ${me.email} and accepted by the mail server. Check your inbox and spam folder. ` +
+      `Settings: ${mailSettingsText()}.` +
+      (dns
+        ? ` Domain records for ${domain}: SPF ${mark(dns.spf)}${dns.spf && !dns.spfPrivate ? ' (but it does not include spf.privateemail.com)' : ''}, DKIM ${mark(dns.dkim)}, DMARC ${mark(dns.dmarc)}.`
+        : ''),
+  }
 }

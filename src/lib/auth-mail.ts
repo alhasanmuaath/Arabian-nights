@@ -1,7 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { inviteEmail, recoveryEmail } from './emails'
-import { mailConfigured, sendMail } from './mail'
+import { describeMailError, mailConfigured, sendMail } from './mail'
 import { createAdminClient } from './supabase/admin'
 import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from './supabase/env'
 
@@ -39,7 +39,7 @@ export async function sendResetCode(email: string): Promise<SendResult> {
   try {
     await sendMail(email, recoveryEmail(code))
   } catch (e) {
-    console.error('Reset code email failed:', e instanceof Error ? e.message : e)
+    console.error('Reset code email failed:', describeMailError(e))
     return 'error'
   }
   return 'sent'
@@ -78,8 +78,8 @@ export async function sendInvitation(email: string, origin: string): Promise<str
   try {
     await sendMail(email, inviteEmail(link))
   } catch (e) {
-    console.error('Invitation email failed:', e instanceof Error ? e.message : e)
-    return ' The person was added, but the invitation email could not be sent. Try "Resend invitation" in a minute.'
+    console.error('Invitation email failed:', describeMailError(e))
+    return ` The person was added, but the invitation email could not be sent (${describeMailError(e)}). Use "Email check" at the top of this page to see what is wrong.`
   }
   return ' Invitation email sent. It has a link where they choose their password.'
 }

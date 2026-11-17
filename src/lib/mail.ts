@@ -1,4 +1,5 @@
 import 'server-only'
+import { resolveTxt } from 'node:dns/promises'
 import nodemailer, { type Transporter } from 'nodemailer'
 
 /**
@@ -41,4 +42,46 @@ export async function sendMail(to: string, email: Email) {
     html: email.html,
     text: email.text,
   })
+}
+
+/** What the app was given (never the password), for the manager's "Email check". */
+export function mailSettings() {
+  return {
+    host: process.env.SMTP_HOST ?? '',
+    port: Number(process.env.SMTP_PORT || 465),
+    user: process.env.SMTP_USER ?? '',
+    from: process.env.SMTP_FROM ?? '',
+    passwordSet: Boolean(process.env.SMTP_PASS),
+  }
+}
+
+export function mailSettingsText() {
+  const m = mailSettings()
+  return `host ${m.host || '(missing)'}, port ${m.port}, user ${m.user || '(none)'}, from ${m.from || '(missing)'}, password ${m.user ? (m.passwordSet ? 'set' : 'MISSING') : 'not used'}`
+}
+
+/** The reason a message could not be sent, in words a person can act on. */
+export function describeMailError(e: unknown): string {
+  if (!(e instanceof Error)) return 'unknown error'
+  const err = e as Error & { code?: string; response?: string }
+  const text = [err.code, err.response || err.message].filter(Boolean).join(': ')
+  return text.replace(/\s+/g, ' ').slice(0, 300)
+}
+
+/** Does the sending domain have the records that stop mail landing in spam? */
+export async function mailDnsCheck(domain: string) {
+  const txt = async (name: string) => {
+    try {
+      return (await resolveTxt(name)).map((r) => r.join(''))
+    } catch {
+      return []
+    }
+  }
+  const [root, dkim, dmarc] = await Promise.all([txt(domain), txt(`privateemail._domainkey.${domain}`), txt(`_dmarc.${domain}`)])
+  return {
+    spf: root.some((t) => t.startsWith('v=spf1')),
+    spfPrivate: root.some((t) => /spf\.privateemail\.com/.test(t)),
+    dkim: dkim.some((t) => t.includes('v=DKIM1')),
+    dmarc: dmarc.some((t) => t.startsWith('v=DMARC1')),
+  }
 }

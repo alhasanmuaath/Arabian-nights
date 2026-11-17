@@ -486,6 +486,15 @@ async function openShoot(page, title) {
     await saraRow.locator('[role=status]', { hasText: 'already have an account' }).waitFor()
     const resent = await newMail('sara@example.com', resendAt, 'reset code')
     check('resending to an existing account emails a 6-digit reset code', /\b\d{6}\b/.test(resent.Text))
+
+    // "Email check": a test email goes to the manager and the page reports the mail server's answer
+    const testAt = new Date(Date.now() - 2000)
+    await page.getByRole('button', { name: 'Send me a test email', exact: true }).click()
+    await page.locator('main [role=status]', { hasText: 'Test email sent' }).waitFor()
+    const test = await newMail('manager@example.com', testAt, 'email test')
+    check('Email check sends a test email to the manager', /email setup works/.test(test.Text))
+    const report = await page.locator('main [role=status]', { hasText: 'Test email sent' }).first().innerText()
+    check('Email check shows the settings the app sees and never the password', /host 127\.0\.0\.1/.test(report) && /password not used/.test(report) && !/Test-pass/.test(report), report.slice(0, 300))
     await shot(page, '10-people')
     await ctx.close()
   }

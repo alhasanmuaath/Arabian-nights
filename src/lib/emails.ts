@@ -35,3 +35,14 @@ export function inviteEmail(link: string): Email {
     text: `Welcome to Arabian Nights\n\nThe manager added you to the team. Open this link to choose your password:\n${link}\n\nThe link works once and stops working after a while. If it has expired, open the app, tap "Forgot password" and enter this email address to get a 6-digit code.\n\nIf you did not expect this email, ignore it.\n`,
   }
 }
+
+/** Sent by the manager's "Email check" to prove the mailbox works. */
+export function testEmail(): Email {
+  return {
+    subject: 'Arabian Nights: email test',
+    html: shell(`
+    <h2 style="margin:0 0 12px;font-size:20px">The email setup works</h2>
+    <p style="margin:0;font-size:15px;line-height:1.5">If you can read this, Arabian Nights can send password reset codes and invitations.</p>`),
+    text: 'Arabian Nights\n\nThe email setup works. If you can read this, Arabian Nights can send password reset codes and invitations.\n',
+  }
+}

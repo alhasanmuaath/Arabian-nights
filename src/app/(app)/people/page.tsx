@@ -4,7 +4,10 @@ import { Icon } from '@/components/Icon'
 import { SmallAction } from '@/components/SmallAction'
 import { ROLE_LABEL, requireRole } from '@/lib/session'
 import type { Person } from '@/lib/types'
-import { invitePerson, removePerson, resendInvite, updatePerson } from '../actions'
+import { invitePerson, removePerson, resendInvite, sendTestEmail, updatePerson } from '../actions'
+
+// Sending an email can take a few seconds; allow for a slow mail server.
+export const maxDuration = 30
 
 const ROLE_HELP: Record<string, string> = {
   model: 'Sees every shoot day and who is on it. Gets announcements and files assigned to her. Sees only her own pay.',
@@ -39,6 +42,20 @@ export default async function People() {
         <p className="eyebrow">{people.length} on the team</p>
         <h1 className="mt-1">People</h1>
       </header>
+
+      <section className="glass glass-pad space-y-3">
+        <div className="flex items-center gap-2">
+          <Icon name="bell" className="text-gold-300" />
+          <h2>Email check</h2>
+        </div>
+        <p className="muted">
+          Invitations and password reset codes are sent from your mailbox. Press the button to send a test email to your own address and see
+          exactly what the mail server says.
+        </p>
+        <ActionForm action={sendTestEmail}>
+          <SubmitButton small>Send me a test email</SubmitButton>
+        </ActionForm>
+      </section>
 
       <section className="glass glass-pad">
         <details className="disclosure">
